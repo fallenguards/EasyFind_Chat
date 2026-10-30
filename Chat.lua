@@ -5342,16 +5342,22 @@ function UI:LayoutChatMessengerChrome()
     local inset = ChatOnTree() and 0 or 6
     local footRowH = collapsed and (collapsedIcon + 4) or rowH
     local foot = footRowH + 2 * rowGap + 1
-    -- As many rows as the sidebar holds; the wheel scrolls through the rest.
+    -- As many whole rows as the sidebar holds, and one more the clip cuts
+    -- at the rule, so the list reads as going on; the wheel scrolls the rest.
     if view.conversationRows then
         local step, top = rowH + rowGap, rowStart
         if collapsed then
             step, top = CHAT_SIDEBAR_COLLAPSED_W - 6 + rowGap, collapsedTop
         end
         local pad = inset + foot
-        local fit = mmax(1, math.floor(((view.sidebar:GetHeight() or 0) - top - pad + rowGap) / step))
-        view.conversationFit = fit
+        local whole = mmax(1, math.floor(((view.sidebar:GetHeight() or 0) - top - pad + rowGap) / step))
+        local fit = whole + 1
+        view.conversationFit, view.conversationWhole = fit, whole
         view._sidebarFit = { top = top, step = step, gap = rowGap, pad = pad }
+        local clip = view.listClip
+        clip:ClearAllPoints()
+        clip:SetPoint("TOPLEFT", view.sidebar, "TOPLEFT", 0, -top)
+        clip:SetPoint("BOTTOMRIGHT", view.sidebar, "BOTTOMRIGHT", 0, pad)
         while #view.conversationRows < fit do self:CreateChatConversationRow(view) end
     end
     if view.gameRow then
@@ -5391,7 +5397,7 @@ function UI:LayoutChatMessengerChrome()
                 row.deleteButton:Hide()
                 row:SetHeight(iconSize + 4)
                 row:ClearAllPoints()
-                row:SetPoint("TOP", view.sidebar, "TOP", 0, -collapsedTop - (i - 1) * (iconSize + 4 + rowGap))
+                row:SetPoint("TOP", view.listClip, "TOP", 0, -(i - 1) * (iconSize + 4 + rowGap))
                 row:SetWidth(iconSize + 4)
                 row.initialBg:SetSize(iconSize, iconSize)
                 ns.SetRoundedRectBarHeight(row.initialBg, iconSize)
@@ -5400,8 +5406,8 @@ function UI:LayoutChatMessengerChrome()
             else
                 row:SetHeight(rowH)
                 row:ClearAllPoints()
-                row:SetPoint("TOPLEFT", view.sidebar, "TOPLEFT", 6, -rowStart - (i - 1) * (rowH + rowGap))
-                row:SetPoint("RIGHT", view.sidebar, "RIGHT", -6, 0)
+                row:SetPoint("TOPLEFT", view.listClip, "TOPLEFT", 6, -(i - 1) * (rowH + rowGap))
+                row:SetPoint("RIGHT", view.listClip, "RIGHT", -6, 0)
                 row.initialBg:SetSize(rowIcon, rowIcon)
                 ns.SetRoundedRectBarHeight(row.initialBg, rowIcon)
                 row.initialBg:SetPoint("LEFT", row, "LEFT", 7, 0)
@@ -7459,6 +7465,7 @@ function UI:RefreshChatMessenger()
     -- A new search starts at the top; a newly selected chat (or its folder)
     -- scrolls into view.
     local fit = view.conversationFit or #view.conversationRows
+    local whole = view.conversationWhole or fit
     if view._sidebarQuery ~= searchQuery then
         view._sidebarQuery = searchQuery
         view.conversationOffset = 0
@@ -7468,12 +7475,12 @@ function UI:RefreshChatMessenger()
         for i = 1, #entries do
             local members = entries[i].members
             if entries[i].key == selectedKey or (members and self:ChatOrderContainsKey(members, selectedKey)) then
-                if i <= offset then offset = i - 1 elseif i > offset + fit then offset = i - fit end
+                if i <= offset then offset = i - 1 elseif i > offset + whole then offset = i - whole end
                 break
             end
         end
     end
-    offset = mmax(0, mmin(offset, #entries - fit))
+    offset = mmax(0, mmin(offset, #entries - whole))
     view.conversationOffset = offset
     for i = 1, #view.conversationRows do
         local row = view.conversationRows[i]
@@ -7719,12 +7726,12 @@ end
 -- One sidebar row: the builder makes eight, the layout more when a taller
 -- sidebar holds them.
 function UI:CreateChatConversationRow(view)
-    local sidebar = view.sidebar
+    local clip = view.listClip
     local i = #view.conversationRows + 1
-    local row = self:CreateChatListRow(sidebar)
+    local row = self:CreateChatListRow(clip)
     view.conversationRows[i] = row
-    row:SetPoint("TOPLEFT", sidebar, "TOPLEFT", 6, -64 - (i - 1) * 34)
-    row:SetPoint("RIGHT", sidebar, "RIGHT", -6, 0)
+    row:SetPoint("TOPLEFT", clip, "TOPLEFT", 6, -(i - 1) * 34)
+    row:SetPoint("RIGHT", clip, "RIGHT", -6, 0)
     return row
 end
 
@@ -7928,7 +7935,7 @@ function UI:CreateChatMessengerView(frame)
         local f = view._sidebarFit
         local rows = view.conversationRows
         if not (f and rows and height) then return end
-        local fit = mmax(1, math.floor((height - f.top - f.pad + f.gap) / f.step))
+        local fit = mmax(1, math.floor((height - f.top - f.pad + f.gap) / f.step)) + 1
         for i = fit + 1, #rows do rows[i]:Hide() end
         if fit ~= view.conversationFit then UI:QueueChatMessengerRefresh() end
     end)
@@ -8185,6 +8192,13 @@ function UI:CreateChatMessengerView(frame)
         Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
     end)
 
+    -- The chats' rows live in a clip ending above the rule: the row the
+    -- room cuts shows its top, so the list reads as going on.
+    local listClip = CreateFrame("Frame", nil, sidebar)
+    listClip:SetClipsChildren(true)
+    listClip:SetPoint("TOPLEFT", sidebar, "TOPLEFT", 0, -64)
+    listClip:SetPoint("BOTTOMRIGHT", sidebar, "BOTTOMRIGHT", 0, 0)
+    view.listClip = listClip
     view.conversationRows = {}
     for _ = 1, 8 do self:CreateChatConversationRow(view) end
     -- The game's chats, one group at the list's foot under a rule.
