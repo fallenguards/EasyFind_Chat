@@ -1,0 +1,7 @@
+.twemoji/
+release.sh
+release.conf
+ziptest.sh
+cf_upload.py
+process_changelog.py
+*.zip
