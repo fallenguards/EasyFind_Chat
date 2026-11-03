@@ -2,7 +2,7 @@ local _, chatNS = ...
 
 local EasyFind = EasyFind
 local ns = EasyFind and EasyFind._ns
-if not (ns and ns.Utils) then return end
+if not (ns and ns.Utils) or chatNS.tooOld then return end
 
 -- The list's own entries over the chats: All (every chat's lines in time
 -- order), and in a Game folder System (the game's lines that are not

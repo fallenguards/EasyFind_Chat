@@ -2,7 +2,7 @@ local _, chatNS = ...
 
 local EasyFind = EasyFind
 local ns = EasyFind and EasyFind._ns
-if not (ns and ns.Utils) then return end
+if not (ns and ns.Utils) or chatNS.tooOld then return end
 
 -- A chat's own picture in place of its letter: a class circle or any macro
 -- icon, picked from a grid. Kept on the conversation as convo.icon: a

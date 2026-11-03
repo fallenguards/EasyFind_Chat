@@ -2,7 +2,7 @@ local _, chatNS = ...
 
 local EasyFind = EasyFind
 local ns = EasyFind and EasyFind._ns
-if not (ns and ns.Utils) then return end
+if not (ns and ns.Utils) or chatNS.tooOld then return end
 
 local Utils = ns.Utils
 local type, tonumber, tostring = type, tonumber, tostring

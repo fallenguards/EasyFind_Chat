@@ -25,11 +25,41 @@ jobs:
       - uses: leafo/gh-actions-lua@v10
         with:
           luaVersion: '5.4'
-      - name: Load the addon (EasyFind there or missing; an old store over the cap; a whisper hidden in a fight)
+      - name: Load the addon (EasyFind there, missing or too old; an old store over the cap; a whisper hidden in a fight)
         run: |
           status=0
-          for mode in normal noef old lockdown; do
+          for mode in normal noef old lockdown tooold; do
             echo "== $mode"
             lua tools/tests/smoke_test.lua . EasyFind_Chat.toc EasyFind_Chat "$mode" || status=1
           done
           exit $status
+
+  names:
+    name: EasyFind names, newest and oldest
+    runs-on: ubuntu-latest
+    steps:
+      # Every EasyFind name the chat calls, in EasyFind now and in the
+      # release Guard.lua names.
+      - uses: actions/checkout@v4
+        with:
+          path: EasyFind_Chat
+      - name: Read the oldest EasyFind
+        id: min
+        run: echo "version=$(sed -n 's/^local MIN_EASYFIND = "\([0-9.]*\)".*/\1/p' EasyFind_Chat/Guard.lua)" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        with:
+          repository: fallenguards/EasyFind
+          path: EasyFind
+      - uses: actions/checkout@v4
+        with:
+          repository: fallenguards/EasyFind
+          ref: v${{ steps.min.outputs.version }}
+          path: EasyFind-oldest
+      - uses: leafo/gh-actions-lua@v10
+        with:
+          luaVersion: '5.4'
+      - name: Check both
+        working-directory: EasyFind_Chat
+        run: |
+          lua tools/tests/core_names.lua . EasyFind_Chat.toc ../EasyFind
+          lua tools/tests/core_names.lua . EasyFind_Chat.toc ../EasyFind-oldest

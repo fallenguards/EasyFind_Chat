@@ -2,7 +2,7 @@ local ADDON, chatNS = ...
 
 local EasyFind = EasyFind
 local ns = EasyFind and EasyFind._ns
-if not (ns and ns.Utils) then return end
+if not (ns and ns.Utils) or chatNS.tooOld then return end
 
 -- The messenger's own table in the core's namespace: the search UI once
 -- lived under ns.UI; the methods below are the chat's alone.

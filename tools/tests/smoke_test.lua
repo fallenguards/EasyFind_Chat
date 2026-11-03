@@ -1,9 +1,10 @@
 -- Loads the chat's toc files against a stubbed game and EasyFind, then checks
 -- what it registered and the paths a stub can drive.
--- Usage: lua smoke_test.lua <addon dir> <toc> <addon name> [noef|old|lockdown]
+-- Usage: lua smoke_test.lua <addon dir> <toc> <addon name> [noef|old|lockdown|tooold]
 -- noef: no EasyFind (nothing loads); old: a store saved before schema 2, over
 -- the message cap, a pinned message at its start; lockdown: a whisper whose
--- words the client hides, recorded once the lockdown ends.
+-- words the client hides, recorded once the lockdown ends; tooold: an
+-- EasyFind older than Guard.lua's (one chat line, nothing else).
 -- luacheck: ignore 111 112 113 121 122 212
 local dir, tocName, addon, mode = arg[1], arg[2], arg[3], arg[4] or "normal"
 
@@ -132,6 +133,15 @@ if mode == "old" then
         order = { "player:bob-realm" } } }
 end
 
+local said = {}
+if mode == "tooold" then
+    _G.C_AddOns = { GetAddOnMetadata = function(name, field)
+        if name == "EasyFind" and field == "Version" then return "3.4.4" end
+        if field == "Title" then return "EasyFind [Chat]" end
+    end }
+    _G.print = function(s) said[#said + 1] = s end
+end
+
 local ns = {}
 local count = 0
 for line in toc:gmatch("[^\r\n]+") do
@@ -153,6 +163,24 @@ end
 
 if mode == "noef" then
     Check(registered.chat == nil and ns.UI == nil, "nothing loads without EasyFind")
+    os.exit(failed and 1 or 0)
+end
+
+if mode == "tooold" then
+    for i = 1, #frames do
+        local f = frames[i]
+        if f.scripts.OnEvent and f.events.PLAYER_LOGIN then f.scripts.OnEvent(f, "PLAYER_LOGIN") end
+    end
+    Check(next(registered) == nil and next(providers) == nil and next(actions) == nil,
+        "nothing registers with an EasyFind too old")
+    local set = {}
+    for k in pairs(ns) do
+        if k ~= "tooOld" and k ~= "EMOTE_SHEET" then set[#set + 1] = tostring(k) end
+    end
+    Check(#set == 0, "every code file stops at its first lines" .. (#set > 0 and (": " .. table.concat(set, ", ")) or ""))
+    Check(#said == 1 and said[1]:find("EasyFind [Chat]", 1, true) and said[1]:find("4.0.0", 1, true) ~= nil,
+        "one chat line at login naming the EasyFind it needs: " .. tostring(said[1]))
+    for _, e in ipairs(errors) do Check(false, "error: " .. e) end
     os.exit(failed and 1 or 0)
 end
 

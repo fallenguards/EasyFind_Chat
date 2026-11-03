@@ -22,6 +22,7 @@ Locales/ptBR.lua [AllowLoadTextLocale ptBR]
 Locales/ruRU.lua [AllowLoadTextLocale ruRU]
 Locales/zhCN.lua [AllowLoadTextLocale zhCN]
 Locales/zhTW.lua [AllowLoadTextLocale zhTW]
+Guard.lua
 
 Store.lua
 EmoteData.lua

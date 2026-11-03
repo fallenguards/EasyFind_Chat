@@ -12,3 +12,4 @@ L["CHAT_OPT_CHATS_TT"]                 = "A row for each conversation, to open i
 L["CHAT_OPT_MESSAGES"]                 = "Messages"
 L["CHAT_OPT_MESSAGES_TT"]              = "A row for each message in your conversations. Off by default: there are many."
 L["APP_DESC_CHAT"]                      = "A messenger for whispers and channels, with threads and history."
+L["EXT_NEEDS_EASYFIND_FMT"]             = "Needs EasyFind %s or later: update EasyFind."

@@ -2,7 +2,7 @@ local _, chatNS = ...
 
 local EasyFind = EasyFind
 local ns = EasyFind and EasyFind._ns
-if not (ns and ns.Utils) then return end
+if not (ns and ns.Utils) or chatNS.tooOld then return end
 
 -- A chat's pinned messages: a message's menu pins it (msg.pinned, and
 -- msg.pinnedAt for the order); the header's pin lists the open chat's
