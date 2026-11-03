@@ -3,7 +3,7 @@
 ## Notes: A messenger for WoW's chat. Every whisper, friend, group and channel keeps its own conversation. Requires EasyFind.
 ## Author: justawower
 ## X-Curse-Project-ID: 1774043
-## Version: 1.0.0
+## Version: 1.0.1
 ## IconTexture: Interface\AddOns\EasyFind\Textures\SpyglassMinimap
 ## Group: EasyFind
 ## Category: UI

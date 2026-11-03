@@ -4,6 +4,13 @@ All notable changes to EasyFind Chat will be documented in this file.
 
 ---
 
+## [1.0.1] - 2026-11-03
+
+### Fixed
+- **Sidebar**: the conversation list runs down to the line under it, its last row cut there, instead of stopping short with a gap
+
+---
+
 ## [1.0.0] - 2026-10-21
 
 ### Added
