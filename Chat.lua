@@ -1683,7 +1683,7 @@ end
 
 function UI:ClearFocusedChatEditBox()
     local focus = GetCurrentKeyBoardFocus and GetCurrentKeyBoardFocus()
-    if not self:IsChatFrameEditBox(focus) then return false end
+    if not focus or focus:IsForbidden() or not self:IsChatFrameEditBox(focus) then return false end
 
     local frame = UI._chatComposer.frame
     local recipientEdit = self:GetActiveRecipientContext()

@@ -263,6 +263,27 @@ for i = 1, #frames do
 end
 
 local UI = ns.UI
+if mode == "normal" then
+    -- The button counts the chats the list shows: this character's (a
+    -- muted room its mentions only), every character's under that pick.
+    local badge
+    rawset(EasyFind.API, "SetBadge", function(_, n) badge = n end)
+    rawset(EasyFind._ns, "PlayerName", function() return "Me" end)
+    rawset(EasyFind._ns, "CurrentCharacterKey", function() return "Me-Realm" end)
+    local store = UI:GetChatConversationStore()
+    store.chars = { "Me-Realm", "Alt-Realm" }
+    store.byKey["player:bob-realm"] = { unread = 3, chars = { [1] = true }, messages = { {} } }
+    store.byKey["player:ann-realm"] = { unread = 5, chars = { [2] = true }, messages = { {} } }
+    store.byKey["channel:#general"] = { unread = 100, mentions = 2, chars = { [1] = true, [2] = true }, messages = { {} } }
+    store.byKey["channel:party"] = { unread = 4, chars = { [1] = true, [2] = true }, messages = { {} } }
+    store.order = { "player:bob-realm", "player:ann-realm", "channel:#general", "channel:party" }
+    UI:UpdateChatUnreadBadge()
+    Check(badge == 9, "the badge counts this character's chats, a muted room's mentions only: " .. tostring(badge))
+    UI._chatComposer.charView = "all"
+    UI:UpdateChatUnreadBadge()
+    Check(badge == 14, "every character's under that pick: " .. tostring(badge))
+    UI._chatComposer.charView = nil
+end
 if mode == "old" then
     local db = _G.EasyFindChatDB
     Check(db.findChats == false and db.findMessages == true, "the search switches carried over from EasyFind's save")
