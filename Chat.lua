@@ -3803,6 +3803,7 @@ function UI:ShowChatCharacterMenu(anchor)
     local function Choose(value)
         UI._chatComposer.charView = value
         UI:RefreshChatMessenger()
+        UI:UpdateChatUnreadBadge()
     end
     local rows = { { text = "All characters", icon = not pick and CHAT_CHECK_TEX or nil,
         onClick = function() Choose("all") end } }
@@ -4504,16 +4505,19 @@ EasyFind.API.RegisterSearchProvider({
     },
 })
 
--- The chat icon's badge: messages unread across the conversations.
+-- The chat icon's badge: messages unread across the chats the list shows,
+-- the picked character's. A muted chat adds only the messages that named you.
 function UI:UpdateChatUnreadBadge()
     local total = 0
     local store = self:GetChatConversationStore()
-    if ChatDB().showBadge ~= false then
-        -- A muted chat adds only the messages that named you.
-        for key, convo in pairs(store and store.byKey or {}) do
-            if self:IsChatConversationMuted(key) then
+    if ChatDB().showBadge ~= false and store then
+        local order = self:FilterChatOrderByCharacter(store.order or {}, store)
+        for i = 1, #order do
+            local key = order[i]
+            local convo = store.byKey[key]
+            if convo and self:IsChatConversationMuted(key) then
                 total = total + self:GetChatMentionCount(convo)
-            else
+            elseif convo then
                 total = total + (tonumber(convo.unread) or 0)
             end
         end
@@ -9464,6 +9468,8 @@ presenceFrame:SetScript("OnEvent", function(_, event)
     if event == "PLAYER_ENTERING_WORLD" then
         local ask = C_GuildInfo and C_GuildInfo.GuildRoster or GuildRoster
         if ask and IsInGuild and IsInGuild() then xpcall(ask, Utils.ErrorHandler) end
+        -- The character is known now: the badge counts this character's chats.
+        UI:UpdateChatUnreadBadge()
         return
     end
     if event == "GUILD_ROSTER_UPDATE" then UI:ReadChatGuildPresence() end
