@@ -266,9 +266,11 @@ function Views:AddSystemLine(text)
 end
 
 local seenAt, seenNow = nil, {}
+-- A secret line (the client withholds some) is asked about before any
+-- compare: comparing one errors.
 local function OnChatLine(frame, text, _, _, _, _, _, _, event)
-    if event ~= nil or frame == _G.COMBATLOG or type(text) ~= "string" or text == ""
-        or (issecretvalue and issecretvalue(text)) then return end
+    if event ~= nil or frame == _G.COMBATLOG or type(text) ~= "string"
+        or (issecretvalue and issecretvalue(text)) or text == "" then return end
     local now = GetTime()
     if now ~= seenAt then
         seenAt = now
