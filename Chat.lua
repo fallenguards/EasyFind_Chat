@@ -3598,13 +3598,14 @@ function UI:IsChatPublicRoom(key)
 end
 
 -- Muted: its unread still counts in the list, never on the chat icon. A
--- chat's own choice (its menu) wins; else the public rooms start muted
--- (Extensions > Chat) and chats with people do not.
+-- chat's own choice (its menu) wins; else only whispers start unmuted.
 function UI:IsChatConversationMuted(key)
     local store = self:GetChatConversationStore()
     local convo = store and store.byKey[key]
     if convo and convo.muted ~= nil then return convo.muted == true end
-    return self:IsChatPublicRoom(key) and ChatDB().mutePublicRooms ~= false
+    if self:IsChatPublicRoom(key) then return ChatDB().mutePublicRooms ~= false end
+    -- Party, raid, instance, guild and officer chat.
+    return type(key) == "string" and key:sub(1, 8) == "channel:" and ChatDB().muteGroups ~= false
 end
 
 -- On unless turned off in Extensions > Chat.
@@ -4540,7 +4541,7 @@ end
 -- Every setting of the page back to its default; the conversations stay.
 function UI:ResetChatSettings()
     local db = ChatDB()
-    for _, key in ipairs({ "showAll", "showCombatLog", "classColors", "mutePublicRooms", "escCloses",
+    for _, key in ipairs({ "showAll", "showCombatLog", "classColors", "mutePublicRooms", "muteGroups", "escCloses",
                            "hideButtonWhileOpen", "headerOneLine", "headerInTitle", "inlineSender",
                            "windowBorder", "timePlacement", "messageSound", "font", "fontScale", "showBadge",
                            "showClock", "headerFontScale", "deliveryNotices", "mentions", "showDrafts", "pins",
@@ -9613,6 +9614,14 @@ local function ChatSettingsRows()
                 UI:RefreshChatMessenger()
             end,
             "Their new messages count in the list but not on the chat icon. Right-click a chat to change it alone."),
+        Check("Mute group and guild chat",
+            function() return ChatDB().muteGroups ~= false end,
+            function(on)
+                ChatDB().muteGroups = OffOrNil(on)
+                UI:UpdateChatUnreadBadge()
+                UI:RefreshChatMessenger()
+            end,
+            "Off, party, raid and guild messages count on the chat icon and play the message sound."),
         Check("Close chat with Esc",
             function() return ChatDB().escCloses == true end,
             function(on)

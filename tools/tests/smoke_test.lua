@@ -313,12 +313,34 @@ if mode == "normal" then
     store.byKey["channel:#general"] = { unread = 100, mentions = 2, chars = { [1] = true, [2] = true }, messages = { {} } }
     store.byKey["channel:party"] = { unread = 4, chars = { [1] = true, [2] = true }, messages = { {} } }
     store.order = { "player:bob-realm", "player:ann-realm", "channel:#general", "channel:party" }
+    -- Only whispers start unmuted: the party's four stay off the button.
     UI:UpdateChatUnreadBadge()
-    Check(badge == 9, "the badge counts this character's chats, a muted room's mentions only: " .. tostring(badge))
+    Check(badge == 5, "the badge counts this character's whispers, a muted chat's mentions only: " .. tostring(badge))
     UI._chatComposer.charView = "all"
     UI:UpdateChatUnreadBadge()
-    Check(badge == 14, "every character's under that pick: " .. tostring(badge))
+    Check(badge == 10, "every character's under that pick: " .. tostring(badge))
     UI._chatComposer.charView = nil
+    Check(UI:IsChatConversationMuted("channel:party") and UI:IsChatConversationMuted("channel:guild")
+        and UI:IsChatConversationMuted("channel:#general") and not UI:IsChatConversationMuted("player:bob-realm")
+        and not UI:IsChatConversationMuted("bn:ann#1111"), "group, guild and public chats start muted, whispers do not")
+    store.byKey["channel:party"].mentions = 1
+    UI:UpdateChatUnreadBadge()
+    Check(badge == 6, "a party message naming you counts through the mute: " .. tostring(badge))
+    store.byKey["channel:party"].mentions = nil
+    store.byKey["channel:party"].muted = false
+    UI:UpdateChatUnreadBadge()
+    Check(badge == 9, "a chat unmuted from its menu counts whole: " .. tostring(badge))
+    store.byKey["channel:party"].muted = nil
+    _G.EasyFindChatDB.muteGroups = false
+    UI:UpdateChatUnreadBadge()
+    Check(badge == 9 and not UI:IsChatConversationMuted("channel:guild") and UI:IsChatConversationMuted("channel:#general"),
+        "the group setting off: party and guild count again, public rooms stay muted: " .. tostring(badge))
+    _G.EasyFindChatDB.muteGroups = nil
+    local muteRow
+    for _, r in ipairs(ext.settingsRows()) do
+        if r.name == "Mute group and guild chat" then muteRow = r end
+    end
+    Check(muteRow ~= nil and muteRow.control.get() == true, "its switch is on the settings page, on by default")
 end
 if mode == "old" then
     local db = _G.EasyFindChatDB
