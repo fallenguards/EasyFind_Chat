@@ -212,7 +212,7 @@ end
 function Views:AllMeta(msg)
     local src = sourceOf[msg]
     if not src or src.kind == "system" then return nil end
-    local label = UI:GetPlainChatLabel(UI:GetChatConversationDisplayLabel(src, src.key) or src.label or "")
+    local label = UI:GetChatConversationPlainLabel(src, src.key)
     if src.kind == "channel" then
         local tag = "[" .. label .. "]"
         if msg.outgoing then return tag end
@@ -221,7 +221,7 @@ function Views:AllMeta(msg)
     local class = msg.senderClass or src.class
     local full = src.targetName or label
     if msg.outgoing then return "To ", label, nil, class, full end
-    return nil, msg.senderLabel or label, " whispers", class, full
+    return nil, msg.senderLabel ~= "" and msg.senderLabel or label, " whispers", class, full
 end
 
 -- Right-click: the icon, and Hide for the two a setting shows.

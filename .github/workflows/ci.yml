@@ -25,10 +25,10 @@ jobs:
       - uses: leafo/gh-actions-lua@v10
         with:
           luaVersion: '5.4'
-      - name: Load the addon (EasyFind there, missing or too old; an old store over the cap; a whisper hidden in a fight)
+      - name: Load the addon (EasyFind there, missing or too old; an old store over the cap; a whisper hidden in a fight; Battle.net chats after a login)
         run: |
           status=0
-          for mode in normal noef old lockdown tooold; do
+          for mode in normal noef old lockdown tooold bn; do
             echo "== $mode"
             lua tools/tests/smoke_test.lua . EasyFind_Chat.toc EasyFind_Chat "$mode" || status=1
           done

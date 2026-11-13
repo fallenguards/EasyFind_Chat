@@ -1,10 +1,12 @@
 -- Loads the chat's toc files against a stubbed game and EasyFind, then checks
 -- what it registered and the paths a stub can drive.
--- Usage: lua smoke_test.lua <addon dir> <toc> <addon name> [noef|old|lockdown|tooold]
+-- Usage: lua smoke_test.lua <addon dir> <toc> <addon name> [noef|old|lockdown|tooold|bn]
 -- noef: no EasyFind (nothing loads); old: a store saved before schema 2, over
 -- the message cap, a pinned message at its start; lockdown: a whisper whose
 -- words the client hides, recorded once the lockdown ends; tooold: an
--- EasyFind older than Guard.lua's (one chat line, nothing else).
+-- EasyFind older than Guard.lua's (one chat line, nothing else); bn:
+-- Battle.net chats saved under a past session's IDs and name tokens, on a
+-- login that handed those IDs to other friends.
 -- luacheck: ignore 111 112 113 121 122 212
 local dir, tocName, addon, mode = arg[1], arg[2], arg[3], arg[4] or "normal"
 
@@ -131,6 +133,40 @@ if mode == "old" then
     _G.EasyFindChatDB = { schemaVersion = 0, conversations = {
         byKey = { ["player:bob-realm"] = { key = "player:bob-realm", label = "Bob", kind = "player", messages = messages } },
         order = { "player:bob-realm" } } }
+end
+
+local bnFriends = {}
+if mode == "bn" then
+    local function Token(n) return "|Kq" .. n .. "|k" end
+    local function Saved(id, tag, initialLabel, text, at)
+        return { key = "bn:" .. id, kind = "bn", label = Token(id), targetID = id, battleTag = tag,
+                 initialLabel = initialLabel, lastTime = os.time() - 5000 + at,
+                 messages = { { text = text, outgoing = false, senderLabel = "", time = os.time() - 5000 + at } } }
+    end
+    _G.EasyFindChatDB = { schemaVersion = 2, conversations = {
+        byKey = {
+            ["bn:42"] = Saved(42, "Ann#1111", Token(42), "hi from Ann", 100),
+            ["bn:43"] = Saved(43, "Bob#2222", "Bobchar", "hi from Bob", 200),
+            ["bn:7"] = Saved(7, "Ann#1111", nil, "older Ann", 50),
+            ["bn:9"] = Saved(9, nil, nil, "no tag", 60),
+            ["bn:44"] = Saved(44, "Gone#3333", nil, "left the list", 70),
+        },
+        order = { "bn:43", "bn:42", "bn:44", "bn:9", "bn:7" } } }
+    -- This login: Bob holds 42, Ann 43, a new friend 9; Gone is off the list.
+    bnFriends = {
+        { bnetAccountID = 43, accountName = Token(43), battleTag = "Ann#1111", gameAccountInfo = {} },
+        { bnetAccountID = 42, accountName = Token(42), battleTag = "Bob#2222", gameAccountInfo = { characterName = "Bobchar" } },
+        { bnetAccountID = 9, accountName = Token(9), battleTag = "Cy#4444", gameAccountInfo = {} },
+    }
+    _G.C_BattleNet = {
+        GetNumFriends = function() return #bnFriends end,
+        GetFriendAccountInfo = function(i) return bnFriends[i] end,
+        GetAccountInfoByID = function(id)
+            for _, friend in ipairs(bnFriends) do
+                if friend.bnetAccountID == id then return friend end
+            end
+        end,
+    }
 end
 
 local said = {}
@@ -291,6 +327,64 @@ if mode == "old" then
     Check(db.schemaVersion == ns.Store.SCHEMA_VERSION, "the old store migrates to schema " .. tostring(db.schemaVersion))
     Check(#messages == 401, "trimmed to the cap with the pinned message kept: " .. #messages)
     Check(messages[1].pinned == true and messages[2].text == "line 51", "the pinned message stays first")
+end
+
+if mode == "bn" then
+    local store = UI:GetChatConversationStore()
+    local annKey, bobKey, goneKey = "bn:ann#1111", "bn:bob#2222", "bn:gone#3333"
+    local ann, bob, gone = store.byKey[annKey], store.byKey[bobKey], store.byKey[goneKey]
+    Check(ann ~= nil and bob ~= nil and gone ~= nil and store.byKey["bn:42"] == nil and store.byKey["bn:43"] == nil
+        and store.byKey["bn:7"] == nil and store.byKey["bn:44"] == nil, "saved Battle.net chats are kept under their BattleTags")
+    Check(ann ~= nil and #ann.messages == 2 and ann.messages[1].text == "older Ann",
+        "one friend's two saved chats are one chat")
+    local past, leaked
+    for key, convo in pairs(store.byKey) do
+        if key:find("^bn:past:") then past = key end
+        if convo.targetID or tostring(convo.label):find("|K", 1, true)
+            or tostring(convo.initialLabel or ""):find("|K", 1, true) then leaked = key end
+    end
+    Check(leaked == nil, "no saved chat keeps a session's ID or name token" .. (leaked and (": " .. leaked) or ""))
+    Check(past ~= nil and store.byKey["bn:9"] == nil, "a saved chat with no BattleTag is set apart from this login's IDs")
+    Check(ann ~= nil and UI:GetChatConversationDisplayLabel(ann, annKey) == "|Kq43|k"
+        and bob ~= nil and UI:GetChatConversationDisplayLabel(bob, bobKey) == "|Kq42|k",
+        "each chat shows its friend's name token of this login")
+    Check(ann ~= nil and UI:GetChatConversationPlainLabel(ann, annKey) == "Ann"
+        and UI:GetChatMessageSenderLabel(ann, ann.messages[1], annKey) == "Ann",
+        "its plain name, and a saved line's sender, are the BattleTag's name")
+    Check(gone ~= nil and UI:GetChatConversationDisplayLabel(gone, goneKey) == "Gone",
+        "a friend off the list shows the BattleTag's name")
+    Check(ann ~= nil and UI:GetChatBNAccountID(ann, annKey) == 43 and bob ~= nil and UI:GetChatBNAccountID(bob, bobKey) == 42,
+        "a reply goes to the friend's ID of this login")
+    Check(gone ~= nil and UI:GetChatBNAccountID(gone, goneKey) == nil and past ~= nil
+        and UI:GetChatBNAccountID(store.byKey[past], past) == nil,
+        "a friend off the list, or a past login's chat with no BattleTag, has no one to send to")
+    -- ID 42 was Ann's when her chat was saved; Bob holds it now.
+    UI:HandleChatMessageEvent("CHAT_MSG_BN_WHISPER", "new from Bob", "|Kq42|k", "", "", "", "", 0, 0, "", 0, 1, nil, 42)
+    Check(bob ~= nil and #bob.messages == 2 and bob.messages[2].text == "new from Bob" and ann ~= nil and #ann.messages == 2,
+        "a whisper lands in its sender's chat, whoever held the ID before")
+    Check(bob ~= nil and bob.messages[2] ~= nil and bob.messages[2].senderLabel == "Bob" and bob.label == "Bob"
+        and bob.targetID == nil, "its sender and the chat's name are saved as plain text, no ID")
+    UI:HandleChatMessageEvent("CHAT_MSG_BN_WHISPER", "hello from Cy", "|Kq9|k", "", "", "", "", 0, 0, "", 0, 2, nil, 9)
+    Check(store.byKey["bn:cy#4444"] ~= nil and past ~= nil and #store.byKey[past].messages == 1,
+        "a new friend on a past chat's ID gets a chat of their own")
+    -- The friend list moves under the index: read again by BattleTag.
+    table.insert(bnFriends, 1, { bnetAccountID = 50, accountName = "|Kq50|k", battleTag = "New#5555", gameAccountInfo = {} })
+    Check(ann ~= nil and UI:GetChatBNAccountID(ann, annKey) == 43, "the friend is found after the list's order moved")
+    -- A whisper with no readable BattleTag: this login only.
+    bnFriends[#bnFriends + 1] = { bnetAccountID = 77, accountName = "|Kq77|k", battleTag = "", gameAccountInfo = {} }
+    UI:HandleChatMessageEvent("CHAT_MSG_BN_WHISPER", "no tag yet", "|Kq77|k", "", "", "", "", 0, 0, "", 0, 3, nil, 77)
+    local live = store.byKey["bn:session:77"]
+    Check(live ~= nil and UI:GetChatBNAccountID(live, "bn:session:77") == 77 and live.targetID == nil,
+        "a chat with no BattleTag answers to its ID for this login, nothing saved")
+    Check(live ~= nil and UI:GetCanonicalChatConversationKey("bn:session:77", live) == "bn:session:77",
+        "and keeps its key while the login lasts")
+    UI._chatComposer.bnSessionIDs["bn:session:77"] = nil
+    Check(live ~= nil and UI:GetCanonicalChatConversationKey("bn:session:77", live):find("^bn:past:") ~= nil,
+        "the next login sets it apart")
+    -- Every send reads the ID from the friend list, never a chat's saved field or its key.
+    Check(chatSrc:find("convo.targetID or", 1, true) == nil and chatSrc:find('key:match("^bn:', 1, true) == nil
+        and chatSrc:find("presenceID = id, text = sendLine", 1, true) ~= nil,
+        "the reply path sends to GetChatBNAccountID's answer only")
 end
 
 if mode == "lockdown" then

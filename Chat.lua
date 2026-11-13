@@ -117,6 +117,8 @@ UI._chatComposer = {
     recipients = {},
     recipientLookup = {},
     friendEntries = {},
+    -- Battle.net: this session's ID of a chat with no BattleTag.
+    bnSessionIDs = {},
     suggestions = {},
     suggestionIndex = 1,
     showAllContacts = nil,
@@ -1969,7 +1971,7 @@ function UI:ClearChatRecipients()
     self:RefreshChatRecipientSuggestions()
 end
 
-function UI:AddChatFriendEntry(kind, id, label, name, source, subtext, online, priority, searchExtra)
+function UI:AddChatFriendEntry(kind, id, label, name, source, subtext, online, priority, searchExtra, battleTag)
     if not id or not label or label == "" then return end
     local entries = UI._chatComposer.friendEntries
     local lookupID = id
@@ -2007,7 +2009,7 @@ function UI:AddChatFriendEntry(kind, id, label, name, source, subtext, online, p
         priority = priority or (online and 1 or 4),
         searchText = slower((label or "") .. " " .. (name or "") .. " "
             .. source .. " " .. subtext .. " " .. (searchExtra or "")),
-        battleTag = (kind == "bn") and searchExtra or nil,
+        battleTag = (kind == "bn") and battleTag or nil,
     }
 end
 
@@ -2095,7 +2097,8 @@ function UI:RefreshChatFriendEntries()
                     self:AddChatFriendEntry("bn", id, label, gameCharacterName
                         or accountInfo.accountName or accountInfo.battleTag or label,
                         "Battle.net", online and subtext or "Battle.net - Offline",
-                        online and true or false, online and 2 or 6, gameCharacterName or extra)
+                        online and true or false, online and 2 or 6, gameCharacterName or extra,
+                        accountInfo.battleTag)
                 end
             end
         end
@@ -2117,7 +2120,7 @@ function UI:RefreshChatFriendEntries()
                 end
                 self:AddChatFriendEntry("bn", presenceID, label, accountName or battleTag or label,
                     "Battle.net", isOnline and subtext or "Battle.net - Offline",
-                    isOnline and true or false, isOnline and 2 or 6, battleTag)
+                    isOnline and true or false, isOnline and 2 or 6, battleTag, battleTag)
             end
         end
     end
@@ -2858,40 +2861,6 @@ function UI:GetChatConversationKey(kind, id, label)
     return kind .. ":" .. slower(tostring(id))
 end
 
-function UI:FindChatBNStableID(...)
-    local candidates = {}
-    for i = 1, select("#", ...) do
-        local value = select(i, ...)
-        local clean = self:GetPlainChatLabel(value)
-        if clean ~= "" then
-            candidates[slower(clean)] = true
-        elseif value then
-            candidates[slower(tostring(value))] = true
-        end
-    end
-
-    local entries = UI._chatComposer.friendEntries or {}
-    for i = 1, #entries do
-        local entry = entries[i]
-        if entry.kind == "bn" and entry.id then
-            local entryCandidates = {
-                entry.id,
-                entry.label,
-                entry.name,
-                entry.initialLabel,
-                entry.searchText,
-            }
-            for ci = 1, #entryCandidates do
-                local value = entryCandidates[ci]
-                local clean = self:GetPlainChatLabel(value)
-                local lower = clean ~= "" and slower(clean) or slower(tostring(value or ""))
-                if candidates[lower] then return entry.id end
-            end
-        end
-    end
-    return nil
-end
-
 function UI:GetCanonicalChatConversationKey(key, convo)
     if not convo then return key end
     if convo.kind == "player" then
@@ -2901,17 +2870,13 @@ function UI:GetCanonicalChatConversationKey(key, convo)
         if keyID and sfind(keyID, "-", 1, true) then return key end
         return self:GetChatConversationKey("player", convo.targetName or convo.label or keyID or key, convo.label)
     elseif convo.kind == "bn" then
-        local id = convo.targetID
-        local keyID = key and tostring(key):match("^bn:(.+)$")
-        if (not id or id == "") and keyID and keyID:match("^%d+$") then
-            id = keyID
-        end
-        if not id or id == "" then
-            id = self:FindChatBNStableID(keyID, convo.label, convo.targetName, convo.initialLabel)
-        end
-        if id and id ~= "" then
-            return self:GetChatConversationKey("bn", id, convo.label)
-        end
+        -- By BattleTag. One with none is a past session's unless this
+        -- session made it: its ID is another friend's now.
+        local tag = convo.battleTag
+        if type(tag) == "string" and tag ~= "" then return "bn:" .. slower(tag) end
+        local keyID = tostring(key):match("^bn:(.+)$") or tostring(key)
+        if UI._chatComposer.bnSessionIDs[key] or keyID:find("^past:") then return key end
+        return "bn:past:" .. tostring(convo.lastTime or 0) .. ":" .. keyID
     elseif convo.kind == "channel" then
         local keyID = key and tostring(key):match("^channel:(.+)$")
         return self:GetChatConversationKey("channel", keyID or convo.label or convo.source or key, convo.label)
@@ -2925,6 +2890,7 @@ function UI:MergeChatConversation(target, source)
     target.source = target.source or source.source
     target.label = target.label or source.label
     target.targetID = target.targetID or source.targetID
+    target.battleTag = target.battleTag or source.battleTag
     target.targetName = target.targetName or source.targetName
     target.initialLabel = target.initialLabel or source.initialLabel
     target.icon = target.icon or source.icon
@@ -2994,6 +2960,9 @@ function UI:CanonicalizeChatConversationStore(store)
     -- Renames are collected first: adding keys during pairs() is undefined.
     local renames
     for key, convo in pairs(store.byKey) do
+        if type(convo) == "table" and convo.kind == "bn" and not UI._chatComposer.bnSessionIDs[key] then
+            self:CleanChatBNConversation(convo)
+        end
         local canonicalKey = self:GetCanonicalChatConversationKey(key, convo)
         if canonicalKey and canonicalKey ~= key then
             renames = renames or {}
@@ -3111,56 +3080,98 @@ function UI:RecordChatPlayerWhisper(text, targetName, outgoing, timestamp, class
     return true
 end
 
-function UI:GetChatBNLabel(id, fallback)
-    local rawFallback = fallback
-    fallback = self:GetPlainChatLabel(fallback or "")
-    if id then
-        local entries = UI._chatComposer.friendEntries
-        for i = 1, #entries do
-            local entry = entries[i]
-            if entry.kind == "bn" and tostring(entry.id) == tostring(id) then
-                return entry.label or entry.name or fallback or rawFallback or tostring(id)
-            end
-        end
-    end
-    return fallback ~= "" and fallback or rawFallback or tostring(id or "Battle.net")
-end
-
--- A Battle.net presence ID is reassigned every session; the BattleTag is the
--- one stable identifier, so conversations are tracked and re-resolved by it.
+-- A Battle.net friend's ID and name token change hands at each login: a
+-- chat is kept by BattleTag, and both are read from the friend list.
 function UI:GetChatBNBattleTag(id)
     if not (id and C_BattleNet and C_BattleNet.GetAccountInfoByID) then return nil end
     local ok, info = xpcall(C_BattleNet.GetAccountInfoByID, Utils.ErrorHandler, tonumber(id) or id)
-    if ok and info and info.battleTag and info.battleTag ~= "" then
-        return info.battleTag
-    end
-    return nil
+    local tag = ok and info and info.battleTag
+    if type(tag) ~= "string" or (issecretvalue and issecretvalue(tag)) or tag == "" then return nil end
+    return tag
 end
 
-function UI:GetChatBNLabelByTag(battleTag)
-    if not battleTag or battleTag == "" then return nil end
-    local want = slower(battleTag)
-    local entries = UI._chatComposer.friendEntries or {}
-    for i = 1, #entries do
-        local entry = entries[i]
-        if entry.kind == "bn" and entry.battleTag
-            and slower(entry.battleTag) == want then
-            return entry.label or entry.name
+-- "Name#1234" without its number: the friend's name as plain text.
+function UI:GetChatBNTagName(battleTag)
+    if type(battleTag) ~= "string" then return nil end
+    local name = battleTag:match("^(.-)#%d+$") or battleTag
+    return name ~= "" and name or nil
+end
+
+-- The friend the account lists under a BattleTag now, or nil. The index
+-- map is read again when the list moved under it.
+function UI:GetChatBNFriendByTag(battleTag)
+    local bn = C_BattleNet
+    if type(battleTag) ~= "string" or battleTag == ""
+        or not (bn and bn.GetFriendAccountInfo and bn.GetNumFriends) then return nil end
+    local c, want = UI._chatComposer, slower(battleTag)
+    for _ = 1, 2 do
+        local map = c.bnFriendIndex
+        if not map then
+            map = {}
+            local ok, total = xpcall(bn.GetNumFriends, Utils.ErrorHandler)
+            for i = 1, (ok and total) or 0 do
+                local okInfo, info = xpcall(bn.GetFriendAccountInfo, Utils.ErrorHandler, i)
+                local tag = okInfo and info and info.battleTag
+                if type(tag) == "string" and not (issecretvalue and issecretvalue(tag)) and tag ~= "" then
+                    map[slower(tag)] = i
+                end
+            end
+            c.bnFriendIndex = map
         end
+        local index = map[want]
+        if not index then return nil end
+        local ok, info = xpcall(bn.GetFriendAccountInfo, Utils.ErrorHandler, index)
+        local tag = ok and info and info.battleTag
+        if type(tag) == "string" and not (issecretvalue and issecretvalue(tag)) and slower(tag) == want then
+            return info
+        end
+        c.bnFriendIndex = nil
     end
     return nil
 end
 
-function UI:GetChatBNAccountInitialText(id)
-    if not (id and C_BattleNet and C_BattleNet.GetAccountInfoByID) then return nil end
-    local ok, accountInfo = xpcall(C_BattleNet.GetAccountInfoByID, Utils.ErrorHandler, tonumber(id) or id)
-    if not (ok and accountInfo) then return nil end
+-- A Battle.net chat's key: the friend's BattleTag. With none readable
+-- the session's ID stands in, for this session only.
+function UI:GetChatBNConversationKey(id, battleTag)
+    battleTag = battleTag or self:GetChatBNBattleTag(id)
+    if battleTag then return "bn:" .. slower(battleTag), battleTag end
+    local key = "bn:session:" .. slower(tostring(id or "unknown"))
+    if id then UI._chatComposer.bnSessionIDs[key] = id end
+    return key, nil
+end
 
-    local game = accountInfo.gameAccountInfo
-    if game and game.characterName and game.characterName ~= "" then
-        return game.characterName
+-- The friend's ID this session; nil once they are off the friend list.
+function UI:GetChatBNAccountID(convo, key)
+    if not convo then return nil end
+    local tag = convo.battleTag
+    if type(tag) == "string" and tag ~= "" then
+        local info = self:GetChatBNFriendByTag(tag)
+        return info and info.bnetAccountID or nil
     end
-    return accountInfo.accountName or accountInfo.battleTag or accountInfo.displayName
+    return UI._chatComposer.bnSessionIDs[key or convo.key]
+end
+
+-- The character a friend is on, by their ID this session.
+function UI:GetChatBNCharacterName(id)
+    if not (id and C_BattleNet and C_BattleNet.GetAccountInfoByID) then return nil end
+    local ok, info = xpcall(C_BattleNet.GetAccountInfoByID, Utils.ErrorHandler, tonumber(id) or id)
+    local game = ok and info and info.gameAccountInfo
+    local name = game and game.characterName
+    if type(name) ~= "string" or (issecretvalue and issecretvalue(name)) or name == "" then return nil end
+    return name
+end
+
+-- A saved Battle.net chat keeps nothing of its session: the ID and the
+-- name token name other friends after a login.
+function UI:CleanChatBNConversation(convo)
+    convo.targetID, convo.initial = nil, nil
+    local name = self:GetChatBNTagName(convo.battleTag)
+    if name then
+        convo.label = name
+    elseif self:GetPlainChatLabel(convo.label or "") == "" then
+        convo.label = "Battle.net"
+    end
+    if convo.initialLabel and self:GetPlainChatLabel(convo.initialLabel) == "" then convo.initialLabel = nil end
 end
 
 function UI:GetChatConversationDisplayLabel(convo, key)
@@ -3174,63 +3185,58 @@ function UI:GetChatConversationDisplayLabel(convo, key)
         return label
     end
     if convo.kind == "bn" then
-        -- prefer the stable BattleTag; presence IDs reshuffle each session
-        local byTag = convo.battleTag and self:GetChatBNLabelByTag(convo.battleTag)
-        if byTag and self:GetPlainChatLabel(byTag) ~= "" then
-            convo.label = byTag
-            return byTag
+        -- This session's name token, never a saved one.
+        local info = self:GetChatBNFriendInfo(convo, key)
+        local token = info and info.accountName
+        if type(token) == "string" and not (issecretvalue and issecretvalue(token)) and token ~= "" then
+            return token
         end
-        local id = convo.targetID or (key and tostring(key):match("^bn:(.+)$"))
-        local resolved = self:GetChatBNLabel(id, label)
-        local plainResolved = self:GetPlainChatLabel(resolved)
-        if plainResolved ~= "" and plainResolved ~= tostring(id or "") then
-            convo.label = resolved
-            return resolved
-        end
+        return self:GetChatBNTagName(convo.battleTag) or label
     end
     return label
 end
 
+-- A chat's name as plain text (sorting, search, copies). A Battle.net
+-- name token reads as nothing, so that chat's is its BattleTag's name.
+function UI:GetChatConversationPlainLabel(convo, key)
+    if not convo then return "" end
+    local plain = self:GetPlainChatLabel(self:GetChatConversationDisplayLabel(convo, key) or "")
+    if plain == "" and convo.kind == "bn" then
+        plain = self:GetChatBNTagName(convo.battleTag) or self:GetPlainChatLabel(convo.label or "")
+    end
+    return plain
+end
+
 function UI:GetChatConversationInitial(convo, key, label)
     if convo and convo.kind == "bn" then
-        local id = convo.targetID or (key and tostring(key):match("^bn:(.+)$"))
-        if id then
-            local entries = UI._chatComposer.friendEntries
-            for i = 1, #entries do
-                local entry = entries[i]
-                if entry.kind == "bn" and tostring(entry.id) == tostring(id) then
-                    return entry.initial
-                        or self:GetChatRecipientInitial(entry.initialLabel, entry.label, entry.name, label)
-                end
-            end
-        end
-        local resolvedInitial = self:GetFirstChatInitialCandidate(convo.initialLabel, self:GetChatBNAccountInitialText(id))
-        if resolvedInitial then
-            convo.initial = resolvedInitial
-            return resolvedInitial
-        end
+        local info = self:GetChatBNFriendInfo(convo, key)
+        local game = info and info.gameAccountInfo
+        local character = game and game.characterName
+        if type(character) ~= "string" or (issecretvalue and issecretvalue(character)) then character = nil end
+        return self:GetChatRecipientInitial(character, convo.initialLabel,
+            self:GetChatBNTagName(convo.battleTag), convo.label)
     end
     if convo then
-        local keyName = key and tostring(key):match("^bn:(.+)$")
-        if keyName and keyName:match("^%d+$") then keyName = nil end
-        return self:GetChatRecipientInitial(convo.initialLabel, label or convo.label, convo.targetName, keyName)
+        return self:GetChatRecipientInitial(convo.initialLabel, label or convo.label, convo.targetName)
     end
     return self:GetChatRecipientInitial(label or key)
 end
 
 function UI:RecordChatBNWhisper(text, id, label, outgoing, timestamp)
-    label = self:GetChatBNLabel(id, label)
-    local key = self:GetChatConversationKey("bn", id or label, label)
-    local convo = self:AddChatConversationMessage(key, label, "bn", text, outgoing, "Battle.net", timestamp, {
-        senderLabel = outgoing and (self:GetChatPlayerName() or "You") or self:GetPlainChatLabel(label),
+    if issecretvalue and issecretvalue(id) then id = nil end
+    local key, battleTag = self:GetChatBNConversationKey(id)
+    local name = self:GetChatBNTagName(battleTag)
+    if not name then
+        name = self:GetPlainChatLabel(label or "")
+        if name == "" then name = "Battle.net" end
+    end
+    local convo = self:AddChatConversationMessage(key, name, "bn", text, outgoing, "Battle.net", timestamp, {
+        senderLabel = outgoing and (self:GetChatPlayerName() or "You") or name,
     })
     if convo then
-        convo.targetID = id
-        convo.battleTag = self:GetChatBNBattleTag(id) or convo.battleTag
-        local plainLabel = self:GetPlainChatLabel(label)
-        convo.initialLabel = self:GetChatBNAccountInitialText(id)
-            or (plainLabel ~= "" and plainLabel or nil)
-            or convo.initialLabel
+        convo.battleTag = battleTag or convo.battleTag
+        convo.targetID = nil
+        convo.initialLabel = self:GetChatBNCharacterName(id) or convo.initialLabel or name
     end
     return true
 end
@@ -3400,10 +3406,19 @@ end
 
 function UI:AddChatConversationForRecipient(recipient, text, outgoing, meta)
     if not recipient then return end
-    local conversationID = recipient.kind == "bn" and recipient.id or (recipient.name or recipient.id)
-    local key = self:GetChatConversationKey(recipient.kind, conversationID, recipient.label)
-    local source = recipient.kind == "bn" and "Battle.net" or "Whisper"
-    local convo = self:AddChatConversationMessage(key, recipient.label or recipient.name, recipient.kind, text, outgoing, source, nil, meta)
+    if recipient.kind == "bn" then
+        local key, battleTag = self:GetChatBNConversationKey(recipient.id)
+        local name = self:GetChatBNTagName(battleTag) or self:GetPlainChatLabel(recipient.label or "")
+        if name == "" then name = "Battle.net" end
+        local convo = self:AddChatConversationMessage(key, name, "bn", text, outgoing, "Battle.net", nil, meta)
+        if convo then
+            convo.battleTag = battleTag or convo.battleTag
+            convo.initialLabel = self:GetChatBNCharacterName(recipient.id) or convo.initialLabel or name
+        end
+        return
+    end
+    local key = self:GetChatConversationKey(recipient.kind, recipient.name or recipient.id, recipient.label)
+    local convo = self:AddChatConversationMessage(key, recipient.label or recipient.name, recipient.kind, text, outgoing, "Whisper", nil, meta)
     if convo then
         convo.targetID = recipient.id
         convo.targetName = recipient.name
@@ -3477,11 +3492,8 @@ end
 -- A Battle.net whisper to a friend gone offline.
 function UI:NoteChatBNUndeliverable(presenceID)
     if not self:ShowsChatDeliveryNotices() or Secret(presenceID) then return end
-    for _, convo in pairs(self:GetChatConversationStore().byKey) do
-        if convo.kind == "bn" and tostring(convo.targetID) == tostring(presenceID) then
-            return MarkChatUndelivered(convo, _G["BN_WHISPER_UNDELIVERABLE"] or "Your friend is offline.")
-        end
-    end
+    local convo = self:GetChatConversationStore().byKey[(self:GetChatBNConversationKey(presenceID))]
+    if convo then MarkChatUndelivered(convo, _G["BN_WHISPER_UNDELIVERABLE"] or "Your friend is offline.") end
 end
 
 -- The client reads held lines plainly again once the lockdown ends.
@@ -3837,8 +3849,8 @@ function UI:SortChatOrder(order, store)
         rank[order[i]] = i
         if mode == "name" then
             local convo = store.byKey[order[i]]
-            labels[order[i]] = slower(self:GetPlainChatLabel(convo and self:GetChatConversationDisplayLabel(convo, order[i])
-                or order[i]))
+            local plain = self:GetChatConversationPlainLabel(convo, order[i])
+            labels[order[i]] = slower(plain ~= "" and plain or order[i])
         end
     end
     local sorted = {}
@@ -3954,7 +3966,7 @@ function UI:FillChatFolderRow(row, fid, entry, store, collapsed, selectedKey)
         local convo = store.byKey[key] or (views and views:Get(key))
         if key == selectedKey then row.holdsSelected = true end
         if convo then
-            names[#names + 1] = self:GetPlainChatLabel(self:GetChatConversationDisplayLabel(convo, key) or key)
+            names[#names + 1] = self:GetChatConversationPlainLabel(convo, key)
             if convo.lastTime and (not newest or convo.lastTime > newest) then newest = convo.lastTime end
             unread = unread + (convo.unread or 0)
             -- Gray only while every chat with unread is muted and none names you.
@@ -4286,7 +4298,7 @@ function UI:ShowChatConversationMenu(key)
     rows[#rows + 1] = { text = "Rename", onClick = function()
         ns.ShowThemedDialog({
             text = "Rename this chat", hasEditBox = true, maxLetters = 32,
-            editBoxDefault = convo.customLabel or self:GetPlainChatLabel(self:GetChatConversationDisplayLabel(convo, key) or ""),
+            editBoxDefault = convo.customLabel or self:GetChatConversationPlainLabel(convo, key),
             acceptText = _G["ACCEPT"] or "Accept",
             onAccept = function(value)
                 local name = strtrim(value or "")
@@ -4320,7 +4332,7 @@ function UI:BuildChatTranscript(key)
     local store = self:GetChatConversationStore()
     local convo = key and store.byKey[key]
     if not convo then return "" end
-    local lines = { self:GetPlainChatLabel(self:GetChatConversationDisplayLabel(convo, key) or convo.label or key) }
+    local lines = { self:GetChatConversationPlainLabel(convo, key) }
     local lastDay
     for _, msg in ipairs(convo.messages or {}) do
         local day = msg.time and date("%A, %B %d, %Y", msg.time)
@@ -4832,7 +4844,7 @@ function UI:GetChatMessageSenderLabel(convo, msg, key)
     if label ~= "" then return label end
     if msg and msg.outgoing then return self:GetChatPlayerName() or "You" end
     if convo then
-        label = self:GetPlainChatLabel(self:GetChatConversationDisplayLabel(convo, key) or convo.label or "")
+        label = self:GetChatConversationPlainLabel(convo, key)
         if label ~= "" then return label end
     end
     return "Unknown"
@@ -6997,7 +7009,14 @@ function UI:SendChatMessengerReply()
         } or nil
         local entry
         if convo.kind == "bn" then
-            entry = { kind = "bn", presenceID = convo.targetID or (key and key:match("^bn:(.+)$")), text = sendLine }
+            local id = self:GetChatBNAccountID(convo, key)
+            if id then
+                entry = { kind = "bn", presenceID = id, text = sendLine }
+            elseif i == 1 and _G["UIErrorsFrame"] then
+                -- Off the friend list: the client's own line for it.
+                local refusal = _G["BN_UNABLE_TO_RESOLVE_NAME"] or "Unable to whisper '%s'. Battle.net may be unavailable."
+                _G["UIErrorsFrame"]:AddMessage(refusal:format(self:GetChatConversationPlainLabel(convo, key)), 1, 0.1, 0.1)
+            end
         elseif convo.kind == "player" then
             entry = { text = sendLine, channel = "WHISPER", target = convo.targetName or convo.label }
         elseif convo.kind == "channel" then
@@ -7045,8 +7064,7 @@ function UI:GetChatConversationChatType(key)
     if not convo then return nil end
     if convo.kind == "player" then return "WHISPER", convo.targetName or convo.label end
     if convo.kind == "bn" then
-        local id = tonumber(convo.targetID or key:match("^bn:(.+)$"))
-        local info = id and C_BattleNet and C_BattleNet.GetAccountInfoByID and C_BattleNet.GetAccountInfoByID(id)
+        local info = self:GetChatBNFriendInfo(convo, key)
         local name = info and info.accountName
         if not name then return nil end
         return "BN_WHISPER", name
@@ -7063,7 +7081,7 @@ end
 -- made as a message would make it when there is none yet. One made here
 -- is marked until its first message: left empty, it goes.
 function UI:TouchChatConversationForChatType(chatType, target)
-    local key, label, kind, source, convo
+    local key, label, kind, source, convo, bnTag
     local def = chatType and CHAT_TYPE_CHANNELS[chatType]
     if def then
         key, label, kind, source = self:GetChatConversationKey("channel", def.key, def.label), def.label, "channel", def.label
@@ -7073,8 +7091,9 @@ function UI:TouchChatConversationForChatType(chatType, target)
     elseif chatType == "BN_WHISPER" and target then
         local id = BNet_GetBNetIDAccount and BNet_GetBNetIDAccount(target)
         if not id then return nil end
-        label = self:GetChatBNLabel(id, target)
-        key, kind, source = self:GetChatConversationKey("bn", id, label), "bn", "Battle.net"
+        key, bnTag = self:GetChatBNConversationKey(id)
+        label = self:GetChatBNTagName(bnTag) or "Battle.net"
+        kind, source = "bn", "Battle.net"
     elseif chatType == "CHANNEL" and target and GetChannelName then
         local _, channelName = GetChannelName(target)
         local name = type(channelName) == "string" and self:GetPlainChatLabel(channelName) or ""
@@ -7089,7 +7108,7 @@ function UI:TouchChatConversationForChatType(chatType, target)
     if not convo then return nil end
     if made then convo.flipMade = true end
     if kind == "player" then convo.targetName = convo.targetName or target end
-    if kind == "bn" then convo.targetID = convo.targetID or BNet_GetBNetIDAccount(target) end
+    if kind == "bn" then convo.battleTag = bnTag or convo.battleTag end
     return key
 end
 
@@ -7150,8 +7169,7 @@ function UI:SendChatComposeInPlaceMessage(view, lines, editBox)
         end
         if sentToRecipient and not firstKey then
             if kind == "bn" then
-                local resolved = self:GetChatBNLabel(recipient.id, recipient.label)
-                firstKey = self:GetChatConversationKey("bn", recipient.id or resolved, resolved)
+                firstKey = self:GetChatBNConversationKey(recipient.id)
             else
                 local target = recipient.name or recipient.id
                 firstKey = self:GetChatConversationKey("player", target, target)
@@ -7310,25 +7328,14 @@ function UI:GetChatPresence(convo, key)
 end
 
 -- A Battle.net chat's friend as the account lists them now: by BattleTag,
--- the one stable name (a chat's ID is last session's after a relaunch),
--- else by the ID the chat or the friend entries hold.
+-- else (a chat with none) by the ID this session gave it.
 function UI:GetChatBNFriendInfo(convo, key)
-    if not (C_BattleNet and C_BattleNet.GetFriendAccountInfo and C_BattleNet.GetNumFriends) then return nil end
-    local tag = convo.battleTag
-    if tag and tag ~= "" then
-        local want = slower(tag)
-        local ok, total = xpcall(C_BattleNet.GetNumFriends, Utils.ErrorHandler)
-        for i = 1, (ok and total) or 0 do
-            local okInfo, info = xpcall(C_BattleNet.GetFriendAccountInfo, Utils.ErrorHandler, i)
-            if okInfo and info and info.battleTag and slower(info.battleTag) == want then return info end
-        end
-    end
-    local keyID = key and tostring(key):match("^bn:(.+)$")
-    local id = tonumber(convo.targetID) or (keyID and tonumber(keyID))
-        or tonumber(self:FindChatBNStableID(keyID, convo.label, convo.targetName, convo.initialLabel))
-    if not (id and C_BattleNet.GetAccountInfoByID) then return nil end
-    local ok, info = xpcall(C_BattleNet.GetAccountInfoByID, Utils.ErrorHandler, id)
-    return ok and info or nil
+    local info = self:GetChatBNFriendByTag(convo.battleTag)
+    if info then return info end
+    local id = self:GetChatBNAccountID(convo, key)
+    if not (id and C_BattleNet and C_BattleNet.GetAccountInfoByID) then return nil end
+    local ok, byID = xpcall(C_BattleNet.GetAccountInfoByID, Utils.ErrorHandler, id)
+    return ok and byID or nil
 end
 
 function UI:UpdateChatHeaderPresence(view, convo, key, plainText)
@@ -9288,7 +9295,7 @@ function chatNS:ListConversations()
     for _, key in ipairs(store.order) do
         local convo = store.byKey[key]
         if convo then
-            out[#out + 1] = { key = key, label = UI:GetPlainChatLabel(UI:GetChatConversationDisplayLabel(convo, key) or key) }
+            out[#out + 1] = { key = key, label = UI:GetChatConversationPlainLabel(convo, key) }
         end
     end
     return out
@@ -9306,7 +9313,7 @@ function chatNS:BuildSearchData()
     for _, key in ipairs(store.order) do
         local convo = store.byKey[key]
         if convo then
-            local label = UI:GetPlainChatLabel(UI:GetChatConversationDisplayLabel(convo, key) or key)
+            local label = UI:GetChatConversationPlainLabel(convo, key)
             local last = convo.lastMessage and UI:TrimChatQuotedText(convo.lastMessage, 60) or nil
             if threads then
                 out[#out + 1] = {
@@ -9461,10 +9468,15 @@ end
 -- for once, so its updates come for the rest of the session.
 local presenceFrame = CreateFrame("Frame")
 for _, event in ipairs({ "FRIENDLIST_UPDATE", "BN_FRIEND_INFO_CHANGED", "BN_FRIEND_ACCOUNT_ONLINE",
-                         "BN_FRIEND_ACCOUNT_OFFLINE", "GUILD_ROSTER_UPDATE", "PLAYER_ENTERING_WORLD" }) do
+                         "BN_FRIEND_ACCOUNT_OFFLINE", "BN_FRIEND_LIST_SIZE_CHANGED", "BN_CONNECTED",
+                         "BN_DISCONNECTED", "GUILD_ROSTER_UPDATE", "PLAYER_ENTERING_WORLD" }) do
     Utils.RegisterEventIfValid(presenceFrame, event)
 end
 presenceFrame:SetScript("OnEvent", function(_, event)
+    -- Friends by BattleTag: the list's order moved.
+    if event ~= "FRIENDLIST_UPDATE" and event ~= "GUILD_ROSTER_UPDATE" and event ~= "BN_FRIEND_INFO_CHANGED" then
+        UI._chatComposer.bnFriendIndex = nil
+    end
     if event == "PLAYER_ENTERING_WORLD" then
         local ask = C_GuildInfo and C_GuildInfo.GuildRoster or GuildRoster
         if ask and IsInGuild and IsInGuild() then xpcall(ask, Utils.ErrorHandler) end

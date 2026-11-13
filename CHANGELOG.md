@@ -4,6 +4,13 @@ All notable changes to EasyFind Chat will be documented in this file.
 
 ---
 
+## [1.1.0] - 2026-11-13
+
+### Fixed
+- **Battle.net chats**: each chat stays with its friend after a logout. Before, a chat could show another friend's name or none, a new whisper could land in another friend's chat, and a reply could reach a different friend. Chats saved earlier are sorted by friend on the first login; lines already filed under the wrong friend stay where they are
+
+---
+
 ## [1.0.2] - 2026-11-09
 
 ### Fixed
