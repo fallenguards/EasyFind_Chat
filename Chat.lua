@@ -8025,7 +8025,7 @@ function UI:CreateChatMessengerView(frame)
     title:SetPoint("LEFT", settings, "RIGHT", 7, 0)
     self:StyleCalculatorButton(settings, 22)
     settings.glyph = settings:CreateTexture(nil, "OVERLAY")
-    -- A new file shows only after a client restart: the game's gear till then.
+    -- The game's gear when EasyFind's cog texture is missing.
     if not (ns.COG_ICON_TEX and settings.glyph:SetTexture(ns.COG_ICON_TEX)) then
         settings.glyph:SetAtlas("QuestLog-icon-setting", false)
         settings.glyph:SetDesaturated(true)
