@@ -2847,7 +2847,10 @@ function UI:GetChatConversationKey(kind, id, label)
         id = self:GetPlainChatLabel(id)
         if id == "" then id = self:GetPlainChatLabel(label) end
         if id ~= "" and not sfind(id, "-", 1, true) then
-            local realm = GetNormalizedRealmName and GetNormalizedRealmName()
+            -- EasyFind's own answer where it has one: the client's is empty in some sessions.
+            local realm
+            if ns.NormalizedRealmName then realm = ns.NormalizedRealmName()
+            else realm = GetNormalizedRealmName and GetNormalizedRealmName() end
             if realm and realm ~= "" then id = id .. "-" .. realm end
         end
     elseif kind == "bn" then
