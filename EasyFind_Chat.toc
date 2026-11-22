@@ -33,3 +33,4 @@ GameLine.lua
 Avatars.lua
 Pins.lua
 Views.lua
+Ignore.lua

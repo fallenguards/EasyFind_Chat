@@ -12,4 +12,7 @@ L["CHAT_OPT_MESSAGES_TT"]                = "Una fila por cada mensaje de tus con
 L["CHAT_COPY_NAME_TT"]                   = "O pasa el ratón por el nombre en un mensaje y pulsa Ctrl+C."
 L["CHAT_HOVER_COPY_NAME"]                = "Pasa el cursor por el nombre y pulsa Ctrl+C."
 L["CHAT_REPORT_GONE_TT"]                 = "El juego ya no conserva este mensaje, así que no se puede denunciar."
+L["CHAT_UNIGNORE"]                       = "Dejar de ignorar"
+L["CHAT_IGNORE_TT"]                      = "En todos tus personajes."
+L["CHAT_IGNORE_NONE"]                    = "No ignoras a nadie."
 L["EXT_NEEDS_EASYFIND_FMT"]             = "Necesita EasyFind %s o posterior: actualiza EasyFind."

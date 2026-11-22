@@ -12,4 +12,7 @@ L["CHAT_OPT_MESSAGES_TT"]                = "대화의 메시지마다 한 줄씩
 L["CHAT_COPY_NAME_TT"]                   = "또는 메시지의 이름에 마우스를 올리고 Ctrl+C를 누르세요."
 L["CHAT_HOVER_COPY_NAME"]                = "이름에 마우스를 올리고 Ctrl+C."
 L["CHAT_REPORT_GONE_TT"]                 = "게임이 이 메시지를 더 이상 보관하지 않아 신고할 수 없습니다."
+L["CHAT_UNIGNORE"]                       = "차단 해제"
+L["CHAT_IGNORE_TT"]                      = "모든 캐릭터에 적용됩니다."
+L["CHAT_IGNORE_NONE"]                    = "차단한 플레이어가 없습니다."
 L["EXT_NEEDS_EASYFIND_FMT"]             = "EasyFind %s 이상이 필요합니다: EasyFind를 업데이트하세요."

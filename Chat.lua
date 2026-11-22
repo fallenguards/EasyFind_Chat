@@ -3557,6 +3557,9 @@ function UI:RouteChatMessageEvent(event, ...)
     if event == "BN_CHAT_WHISPER_UNDELIVERABLE" then return self:NoteChatBNUndeliverable(message) end
     if Secret(message) or Secret(author) then return self:HoldChatSecretLine(event, ...) end
     if not message or message == "" then return end
+    -- A whisper's echo names who it went to, not who spoke.
+    local ignore = chatNS.Ignore
+    if ignore and event ~= "CHAT_MSG_WHISPER_INFORM" and ignore:Has(author) then return end
 
     if event == "CHAT_MSG_WHISPER" then
         return self:RecordChatPlayerWhisper(message, author or target, false, nil, self:GetChatClassOfGUID(guid))
@@ -4331,6 +4334,9 @@ function UI:ShowChatConversationMenu(key)
     rows[#rows + 1] = { text = "Copy Chat", onClick = function()
         if ns.CopyToClipboard then ns.CopyToClipboard(UI:BuildChatTranscript(key)) end
     end }
+    if convo.kind == "player" then
+        self:AddChatIgnoreMenuRow(rows, self:GetPlainChatLabel(convo.targetName or convo.label))
+    end
     rows[#rows + 1] = { text = "Delete Chat", onClick = function() UI:DeleteChatConversation(key) end }
     Utils.ShowCursorMenu("EasyFindChatConversationMenu", rows, {
         strata = "TOOLTIP", level = 100, rowHeight = 22, offsetX = 4, offsetY = -4,
@@ -7006,6 +7012,18 @@ function UI:ShowChatNameCopyHint(hit, name)
     holder:Show()
 end
 
+-- Ignore, or Unignore: on every character, the game's own list with it.
+function UI:AddChatIgnoreMenuRow(rows, name)
+    local ignore, FL = chatNS.Ignore, C_FriendList
+    if not (ignore and FL and FL.AddIgnore) then return end
+    local ignored = ignore:Has(name) or (FL.IsIgnored and FL.IsIgnored(name)) or false
+    rows[#rows + 1] = { text = ignored and ns.L["CHAT_UNIGNORE"] or (_G["IGNORE"] or "Ignore"),
+        tooltip = not ignored and ns.L["CHAT_IGNORE_TT"] or nil,
+        onClick = function()
+            if ignored then ignore:Remove(name) else ignore:Add(name) end
+        end }
+end
+
 -- A player's menu entries, as the game's own player menu has them: copy
 -- the name, add a friend, ignore, and EasyFind's note on them. hit: the
 -- name's frame on screen, where Copy Character Name points.
@@ -7024,12 +7042,7 @@ function UI:AddChatPlayerMenuRows(rows, sender, hit)
     if FL and FL.AddFriend then
         rows[#rows + 1] = { text = _G["ADD_FRIEND"] or "Add Friend", onClick = function() FL.AddFriend(name) end }
     end
-    if FL and FL.AddIgnore then
-        local ignored = FL.IsIgnored and FL.IsIgnored(name)
-        rows[#rows + 1] = { text = ignored and "Unignore" or (_G["IGNORE"] or "Ignore"), onClick = function()
-            if ignored and FL.DelIgnore then FL.DelIgnore(name) else FL.AddIgnore(name) end
-        end }
-    end
+    self:AddChatIgnoreMenuRow(rows, name)
     local key = ns.NotesPlayerKey and ns.NotesPlayerKey(name)
     if key and ns.IsCompanionLoadable and ns.IsCompanionLoadable("EasyFind_Notes") then
         local entry = { type = "player", id = key, name = name:match("^([^%-]+)") or name }
@@ -9517,6 +9530,7 @@ local function Setup()
     UI:UpdateChatUnreadBadge()
     UI:ApplyChatTakeover(true)
     UI:DropEmptyFlipConversations()
+    if chatNS.Ignore then chatNS.Ignore:Start() end
 end
 
 local loadFrame = CreateFrame("Frame")
@@ -9911,6 +9925,25 @@ local function ChatSettingsRows()
     return rows
 end
 
+-- Everyone ignored, on every character: an X takes a name off. Nobody
+-- ignored: one line saying so.
+function UI:ShowChatIgnoreList(anchor)
+    local ignore = chatNS.Ignore
+    local function Rows()
+        local rows = {}
+        for _, name in ipairs(ignore:Names()) do
+            rows[#rows + 1] = { text = name, remove = function() ignore:Remove(name) end }
+        end
+        return rows
+    end
+    local rows = Rows()
+    if #rows == 0 then rows[1] = { text = ns.L["CHAT_IGNORE_NONE"], disabled = true } end
+    Utils.ShowCursorMenu("EasyFindChatIgnoreMenu", rows, {
+        strata = "TOOLTIP", level = 100, rowHeight = 22, rowsProvider = Rows,
+        anchorFrame = anchor, point = "TOPLEFT", relativePoint = "BOTTOMLEFT", offsetX = 0, offsetY = -4,
+    })
+end
+
 -- The page: the switches in two columns, the choices full-width below.
 local function BuildChatSettingsPage(page, kit)
     local hint = kit.Title(page, ns.L["APP_CHAT"] or "Chat",
@@ -9971,11 +10004,17 @@ local function BuildChatSettingsPage(page, kit)
         font:GetWidth())
     headerSize:SetPoint("TOPLEFT", size, "BOTTOMLEFT", 0, -4)
     UI._chatComposer.headerSizeRow = headerSize
-    if not row["Keep messages for"] then return end
-    local days = Choice("Keep messages for")
-    days:SetPoint("TOPLEFT", headerSize, "BOTTOMLEFT", 0, -4)
-    local count = Choice("Messages per conversation")
-    count:SetPoint("TOPLEFT", days, "BOTTOMLEFT", 0, -4)
+    local last = headerSize
+    if row["Keep messages for"] then
+        local days = Choice("Keep messages for")
+        days:SetPoint("TOPLEFT", headerSize, "BOTTOMLEFT", 0, -4)
+        last = Choice("Messages per conversation")
+        last:SetPoint("TOPLEFT", days, "BOTTOMLEFT", 0, -4)
+    end
+    if not (chatNS.Ignore and kit.Button) then return end
+    local ignoreList = kit.Button(page, _G["IGNORE_LIST"] or "Ignore List", kit.BUTTON_WIDTH)
+    ignoreList:SetPoint("TOPLEFT", last, "BOTTOMLEFT", 8, -10)
+    ignoreList:SetScript("OnClick", function(self) UI:ShowChatIgnoreList(self) end)
 end
 
 EasyFind.API.RegisterExtension({ id = "chat", settings = BuildChatSettingsPage, settingsRows = ChatSettingsRows,

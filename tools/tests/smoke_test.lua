@@ -96,6 +96,33 @@ _G.C_ChatInfo = {
     GetChatLineSenderGUID = function() return lockdown and SECRET or nil end,
     IsValidChatLine = function(id) return lines[id] ~= nil end,
 }
+-- The game's ignore list for the character playing; what else the friend
+-- list has stays a stub.
+local gameIgnores, ignoreCalls = {}, {}
+_G.C_FriendList = setmetatable({
+    GetNumIgnores = function() return #gameIgnores end,
+    GetIgnoreName = function(i) return gameIgnores[i] end,
+    IsIgnored = function(name)
+        for _, listed in ipairs(gameIgnores) do
+            if listed == name then return true end
+        end
+        return false
+    end,
+    AddIgnore = function(name)
+        ignoreCalls[#ignoreCalls + 1] = "+" .. name
+        gameIgnores[#gameIgnores + 1] = name
+    end,
+    DelIgnore = function(name)
+        ignoreCalls[#ignoreCalls + 1] = "-" .. name
+        for i = #gameIgnores, 1, -1 do
+            if gameIgnores[i] == name then table.remove(gameIgnores, i) end
+        end
+    end,
+}, { __index = function(t, k)
+    local v = Stub()
+    rawset(t, k, v)
+    return v
+end })
 _G.unpack = table.unpack
 
 local function Say(s) io.stdout:write(s, "\n") end
@@ -425,6 +452,76 @@ if mode == "normal" then
         and chatSrc:find("C_ReportSystem.SendReport", 1, true) == nil,
         "the message menu has the row under the game's own label, and nothing here sends a report")
     _G.C_ReportSystem, _G.PlayerLocation, _G.ReportInfo, _G.ReportFrame = nil, nil, nil, nil
+
+    -- One ignore list for every character, in step with the game's own
+    -- list for the one playing.
+    local ignore = ns.Ignore
+    local function ListEvent()
+        for i = 1, #frames do
+            local f = frames[i]
+            if f.events.IGNORELIST_UPDATE and f.scripts.OnEvent then f.scripts.OnEvent(f, "IGNORELIST_UPDATE") end
+        end
+    end
+    local function Called(what)
+        for _, call in ipairs(ignoreCalls) do
+            if call == what then return true end
+        end
+        return false
+    end
+    Check(ignore ~= nil and ignore:Key("First Surname") == ignore:Key("First-Surname")
+        and ignore:Key("Seller-Realm") == "player:seller-realm", "a name is one player however the game writes it")
+    -- The session's first read: names the game holds come in, and one taken
+    -- off on another character leaves this character's list.
+    db.ignored, db.unignored, db.ignoreSent = nil, { ["player:stale-realm"] = true }, nil
+    gameIgnores[1], gameIgnores[2] = "Stale-Realm", "Old-Realm"
+    ListEvent()
+    Check(db.ignored["player:old-realm"] == "Old-Realm" and ignore:Has("Old-Realm"),
+        "a name on the game's own list is ignored on every character")
+    Check(Called("-Stale-Realm") and db.ignored["player:stale-realm"] == nil and not ignore:Has("Stale-Realm"),
+        "a name taken off elsewhere leaves this character's list")
+    ignore:Add("Seller-Realm")
+    Check(Called("+Seller-Realm") and ignore:Has("Seller-Realm") and db.ignoreSent[1]["player:seller-realm"] == true,
+        "Ignore puts the name on the list and on this character's own")
+    ListEvent()
+    local before = #seller.messages
+    UI:HandleChatMessageEvent("CHAT_MSG_WHISPER", "buy gold", "Seller-Realm", "", "", "Seller-Realm", "", 0, 0, "", 0, 80)
+    Check(#seller.messages == before, "an ignored player's line is not kept")
+    UI:HandleChatMessageEvent("CHAT_MSG_WHISPER_INFORM", "stop", "Seller-Realm", "", "", "Seller-Realm", "", 0, 0, "", 0, 81)
+    Check(#seller.messages == before + 1, "your own whisper to them is")
+    -- Taken off in the game's own window: one name gone between two reads.
+    for i = #gameIgnores, 1, -1 do
+        if gameIgnores[i] == "Old-Realm" then table.remove(gameIgnores, i) end
+    end
+    ListEvent()
+    Check(db.ignored["player:old-realm"] == nil and db.unignored["player:old-realm"] == true and not Called("-Old-Realm"),
+        "a name taken off in the game's own window is taken off everywhere")
+    ignore:Add("Third-Realm")
+    ListEvent()
+    -- A list that reads empty at once is no player's doing.
+    local calls = #ignoreCalls
+    for i = #gameIgnores, 1, -1 do gameIgnores[i] = nil end
+    ListEvent()
+    Check(ignore:Has("Seller-Realm") and ignore:Has("Third-Realm") and #ignoreCalls == calls,
+        "several names gone at once take nothing off, and nothing is sent again")
+    -- A character the names were never offered to gets each once.
+    db.ignoreSent[1] = {}
+    ListEvent()
+    Check(Called("+Third-Realm") and #ignoreCalls == calls + 2, "a character not yet offered the names adds them")
+    calls = #ignoreCalls
+    ListEvent()
+    Check(#ignoreCalls == calls, "once")
+    local names = ignore:Names()
+    Check(#names == 2 and names[1] == "Seller-Realm" and names[2] == "Third-Realm", "the names, sorted, for the list in settings")
+    ignore:Remove("Seller-Realm")
+    Check(Called("-Seller-Realm") and not ignore:Has("Seller-Realm") and db.unignored["player:seller-realm"] == true
+        and db.ignoreSent[1]["player:seller-realm"] == nil, "Unignore takes the name off here and marks it for the others")
+    ignore:Add("Seller-Realm")
+    Check(ignore:Has("Seller-Realm") and db.unignored["player:seller-realm"] == nil, "ignored again: no longer marked taken off")
+    local rowAt = chatSrc:find("\nfunction UI:AddChatIgnoreMenuRow(rows, name)\n", 1, true)
+    local _, rowUses = chatSrc:gsub("self:AddChatIgnoreMenuRow%(rows, ", "")
+    Check(rowAt ~= nil and rowUses == 2 and chatSrc:find("FL.AddIgnore(name)", 1, true) == nil,
+        "a message's menu and a whisper chat's menu both ignore through the one list")
+    db.ignored, db.unignored, db.ignoreSent = nil, nil, nil
 end
 if mode == "old" then
     local db = _G.EasyFindChatDB

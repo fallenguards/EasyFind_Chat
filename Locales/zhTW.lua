@@ -12,4 +12,7 @@ L["CHAT_OPT_MESSAGES_TT"]                = "對話中的每則訊息一行。預
 L["CHAT_COPY_NAME_TT"]                   = "或將滑鼠懸停在訊息中的名字上並按 Ctrl+C。"
 L["CHAT_HOVER_COPY_NAME"]                = "懸停在名字上並按Ctrl+C。"
 L["CHAT_REPORT_GONE_TT"]                 = "遊戲已不再保存這則訊息，無法檢舉。"
+L["CHAT_UNIGNORE"]                       = "取消忽略"
+L["CHAT_IGNORE_TT"]                      = "對你的所有角色生效。"
+L["CHAT_IGNORE_NONE"]                    = "沒有忽略任何人。"
 L["EXT_NEEDS_EASYFIND_FMT"]             = "需要 EasyFind %s 或更新版本：請更新 EasyFind。"

@@ -12,4 +12,7 @@ L["CHAT_OPT_MESSAGES_TT"]                = "对话中的每条消息一行。默
 L["CHAT_COPY_NAME_TT"]                   = "或将鼠标悬停在消息中的名字上并按 Ctrl+C。"
 L["CHAT_HOVER_COPY_NAME"]                = "悬停在名字上并按Ctrl+C。"
 L["CHAT_REPORT_GONE_TT"]                 = "游戏已不再保存这条消息，无法举报。"
+L["CHAT_UNIGNORE"]                       = "取消屏蔽"
+L["CHAT_IGNORE_TT"]                      = "对你的所有角色生效。"
+L["CHAT_IGNORE_NONE"]                    = "没有屏蔽任何人。"
 L["EXT_NEEDS_EASYFIND_FMT"]             = "需要 EasyFind %s 或更高版本：请更新 EasyFind。"
