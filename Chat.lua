@@ -3352,6 +3352,7 @@ function UI:AddChatConversationMessage(key, label, kind, text, outgoing, source,
         forwardedFrom = meta and meta.forwardedFrom or nil,
         mention = mention,
         char = self:GetChatCharacterIndex(),
+        line = not outgoing and heldChat.line or nil,
     }
     local heardOn = messages[#messages].char
     if heardOn then
@@ -3536,7 +3537,16 @@ function UI:HoldChatSecretLine(event, ...)
     Utils.RegisterEventIfValid(heldChat.watch, "ADDON_RESTRICTION_STATE_CHANGED")
 end
 
+-- The client's number for the line being recorded: what a report names.
 function UI:HandleChatMessageEvent(event, ...)
+    local line = select(11, ...)
+    heldChat.line = not Secret(line) and type(line) == "number" and line or nil
+    local recorded = self:RouteChatMessageEvent(event, ...)
+    heldChat.line = nil
+    return recorded
+end
+
+function UI:RouteChatMessageEvent(event, ...)
     local message = ...
     local author = select(2, ...)
     local target = select(5, ...)
@@ -6883,6 +6893,12 @@ function UI:ShowChatMessageMenu(row)
                 or (head and head:IsVisible() and head._efCopyText and head) or nil
             self:AddChatPlayerMenuRows(rows, sender, hit)
         end
+        local location, gone = self:GetChatReportLocation(msg)
+        if (location or gone) and (convo.kind == "player" or convo.kind == "channel" or convo.kind == "bn") then
+            rows[#rows + 1] = { text = _G["REPORT_CHAT"] or "Report Player", disabled = gone,
+                tooltip = gone and ns.L["CHAT_REPORT_GONE_TT"] or nil,
+                onClick = function() UI:ReportChatMessage(msg, convo) end }
+        end
     end
     Utils.ShowCursorMenu("EasyFindChatMessageMenu", rows, {
         strata = "TOOLTIP",
@@ -6891,6 +6907,36 @@ function UI:ShowChatMessageMenu(row)
         offsetX = 4,
         offsetY = -4,
     })
+end
+
+-- A report names the client's own line, as its chat menu does. A number
+-- kept from an earlier run of the game names another line: the words must
+-- match. Second return: the client no longer holds the line.
+function UI:GetChatReportLocation(msg)
+    local lines, reports, places = C_ChatInfo, _G["C_ReportSystem"], _G["PlayerLocation"]
+    if not (_G["ReportFrame"] and _G["ReportInfo"] and Enum.ReportType and reports and reports.CanReportPlayer
+        and places and places.CreateFromChatLineID and lines.IsValidChatLine) then return nil end
+    local line = msg.line
+    local held = type(line) == "number" and lines.IsValidChatLine(line)
+    if held then
+        -- A line the client let go of throws.
+        local ok, text = pcall(lines.GetChatLineText, line)
+        held = ok and not Secret(text) and text == msg.text
+    end
+    if not held then return nil, true end
+    local location = places:CreateFromChatLineID(line)
+    if location and location:IsValid() and reports.CanReportPlayer(location) then return location end
+    return nil
+end
+
+-- The game's own report window, opened as its chat menu opens it: the
+-- report is sent by the player's press there.
+function UI:ReportChatMessage(msg, convo)
+    local location = self:GetChatReportLocation(msg)
+    local info = location and _G["ReportInfo"]:CreateReportInfoFromType(Enum.ReportType.Chat)
+    if not info then return end
+    local name = msg.senderName or convo.targetName or self:GetPlainChatLabel(msg.senderLabel or "")
+    _G["ReportFrame"]:InitiateReport(info, name, location, convo.kind == "bn")
 end
 
 -- Copy Character Name points at the name it copies: a hint over it, and

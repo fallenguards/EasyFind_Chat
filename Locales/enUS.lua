@@ -7,6 +7,7 @@ if not L then return end
 L["CHAT_EXP_TT"]                        = "Chat is still being built: some parts may not work right yet. Please give feedback as you encounter issues."
 L["CHAT_COPY_NAME_TT"]                 = "Or hover the name in a message and press Ctrl+C."
 L["CHAT_HOVER_COPY_NAME"]              = "Hover name and Ctrl+C."
+L["CHAT_REPORT_GONE_TT"]               = "The game no longer holds this message, so it cannot be reported."
 L["CHAT_OPT_CHATS"]                    = "Conversations"
 L["CHAT_OPT_CHATS_TT"]                 = "A row for each conversation, to open it."
 L["CHAT_OPT_MESSAGES"]                 = "Messages"

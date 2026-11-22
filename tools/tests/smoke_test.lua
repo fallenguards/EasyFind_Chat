@@ -94,6 +94,7 @@ _G.C_ChatInfo = {
     GetChatLineText = function(id) return lockdown and SECRET or (lines[id] and lines[id].text) end,
     GetChatLineSenderName = function(id) return lockdown and SECRET or (lines[id] and lines[id].name) end,
     GetChatLineSenderGUID = function() return lockdown and SECRET or nil end,
+    IsValidChatLine = function(id) return lines[id] ~= nil end,
 }
 _G.unpack = table.unpack
 
@@ -376,6 +377,54 @@ if mode == "normal" then
         and refreshAt ~= nil and chatSrc:find("if not searchActive then self:RememberOpenChat(selectedKey) end", refreshAt, true) ~= nil,
         "a pick and the list's own choice are both kept")
     FreshSession(nil)
+
+    -- Report Player on another player's line opens the game's own report
+    -- window on the client's own line, as its chat menu does; a line the
+    -- client no longer holds is never named.
+    lines[77] = { text = "WTS gold", name = "Seller-Realm" }
+    UI:HandleChatMessageEvent("CHAT_MSG_WHISPER", "WTS gold", "Seller-Realm", "", "", "Seller-Realm", "", 0, 0, "", 0, 77)
+    local seller = store.byKey["player:seller-realm"]
+    local heard = seller and seller.messages[#seller.messages]
+    Check(heard ~= nil and heard.line == 77, "a heard line keeps the client's number for it")
+    UI:HandleChatMessageEvent("CHAT_MSG_WHISPER_INFORM", "no thanks", "Seller-Realm", "", "", "Seller-Realm", "", 0, 0, "", 0, 78)
+    local own = seller and seller.messages[#seller.messages]
+    Check(own ~= nil and own.outgoing == true and own.line == nil, "your own line keeps none")
+    Check(heard ~= nil and UI:GetChatReportLocation(heard) == nil and select(2, UI:GetChatReportLocation(heard)) == nil,
+        "no report row on a client without the report window")
+    local canReport, opened = true, nil
+    _G.C_ReportSystem = { CanReportPlayer = function(location) return canReport and location.chatLineID == 77 end }
+    _G.PlayerLocation = { CreateFromChatLineID = function(_, id)
+        return { chatLineID = id, IsValid = function() return true end }
+    end }
+    _G.ReportInfo = { CreateReportInfoFromType = function(_, reportType) return { reportType = reportType } end }
+    _G.ReportFrame = { InitiateReport = function(_, info, name, location, isBnet)
+        opened = { info = info, name = name, location = location, isBnet = isBnet }
+    end }
+    local location, gone = UI:GetChatReportLocation(heard)
+    Check(location ~= nil and location.chatLineID == 77 and not gone, "a line the client holds can be reported")
+    UI:ReportChatMessage(heard, seller)
+    Check(opened ~= nil and opened.location.chatLineID == 77 and opened.name == "Seller-Realm" and opened.isBnet == false
+        and opened.info.reportType ~= nil, "the game's report window opens on that line, with the sender's name")
+    canReport = false
+    location, gone = UI:GetChatReportLocation(heard)
+    Check(location == nil and gone == nil, "a line the game will not take a report on has no row")
+    canReport = true
+    lines[77].text = "another line took the number"
+    location, gone = UI:GetChatReportLocation(heard)
+    Check(location == nil and gone == true, "a number that names other words now: grayed, never reported")
+    opened = nil
+    UI:ReportChatMessage(heard, seller)
+    Check(opened == nil, "and its click opens nothing")
+    lines[77] = nil
+    location, gone = UI:GetChatReportLocation(heard)
+    Check(location == nil and gone == true, "a line the client let go of: grayed")
+    location, gone = UI:GetChatReportLocation({ text = "from an earlier session" })
+    Check(location == nil and gone == true, "a line with no number: grayed")
+    local menuAt = chatSrc:find("\nfunction UI:ShowChatMessageMenu(row)\n", 1, true)
+    Check(menuAt ~= nil and chatSrc:find('text = _G["REPORT_CHAT"] or "Report Player", disabled = gone,', menuAt, true) ~= nil
+        and chatSrc:find("C_ReportSystem.SendReport", 1, true) == nil,
+        "the message menu has the row under the game's own label, and nothing here sends a report")
+    _G.C_ReportSystem, _G.PlayerLocation, _G.ReportInfo, _G.ReportFrame = nil, nil, nil, nil
 end
 if mode == "old" then
     local db = _G.EasyFindChatDB
