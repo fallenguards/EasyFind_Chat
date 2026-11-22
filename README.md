@@ -16,6 +16,7 @@ Retail, WoW Forever, Classic Era, TBC Anniversary and Mists Classic.
 - A New messages line where your unread messages start, and a button back to the newest.
 - Search every chat, filter the open one with Ctrl+F, or show one person's messages with from:Name.
 - Folders, pinned and muted chats, an unread count on the chat button, and messages that name you standing out.
+- One ignore list for all your characters, and Report Player on a message's right-click menu.
 - Unsent drafts kept per chat; away and busy replies, and whispers that never arrived, shown in the chat.
 - Web addresses copy on click; item links and EasyFind links work inside the bubbles.
 - Optional: use it as the game's chat, with slash commands and the Combat Log inside its window.

@@ -4,6 +4,17 @@ All notable changes to EasyFind Chat will be documented in this file.
 
 ---
 
+## [1.2.0] - 2026-11-22
+
+### Added
+- **One ignore list for all your characters**: Ignore on the right-click menu of a message or a whisper chat hides that player's messages on every character. Each character adds the names to its own in-game ignore list when it logs in, and names already on a character's in-game list join the shared one. Unignore, or removing the name in the game's own list, takes it off everywhere. The Ignore List button in the chat's settings shows everyone on it
+- **Report Player**: on the right-click menu of another player's message, it opens the game's report window on that message. The row is grayed on a message the game no longer holds
+
+### Fixed
+- **The open chat is remembered**: after a reload or a login the window opens on the chat you had open on that character, instead of the top one in the list
+
+---
+
 ## [1.1.0] - 2026-11-13
 
 ### Changed
