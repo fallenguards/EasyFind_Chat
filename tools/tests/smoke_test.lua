@@ -341,6 +341,41 @@ if mode == "normal" then
         if r.name == "Mute group and guild chat" then muteRow = r end
     end
     Check(muteRow ~= nil and muteRow.control.get() == true, "its switch is on the settings page, on by default")
+
+    -- A reload opens on the chat it left, each character its own; the
+    -- list's first only when that chat is gone (2026-11-21: the open chat
+    -- was kept in memory alone, so every reload opened on the top one).
+    local composer, db = UI._chatComposer, _G.EasyFindChatDB
+    local order = { "player:bob-realm", "channel:party" }
+    local function FreshSession(kept)
+        composer.selectedConversationKey, composer.openChatRead, composer.composeInPlace = nil, nil, nil
+        db.openChat = kept
+    end
+    FreshSession({ [1] = "channel:party", [2] = "player:ann-realm" })
+    Check(UI:ResolveChatSelection(order, store, false) == "channel:party", "a reload opens on this character's last chat")
+    composer.selectedConversationKey = "player:bob-realm"
+    Check(UI:ResolveChatSelection(order, store, false) == "player:bob-realm", "read once: a chat picked after stays in view")
+    FreshSession({ [1] = "player:gone-realm" })
+    Check(UI:ResolveChatSelection(order, store, false) == "player:bob-realm", "a last chat no longer listed: the list's first")
+    FreshSession({ [1] = views.ALL })
+    Check(UI:ResolveChatSelection(order, store, false) == views.ALL, "All and the game's other chats are opened on too")
+    FreshSession({ [1] = "channel:party" })
+    Check(UI:ResolveChatSelection(order, store, true) == "player:bob-realm" and composer.openChatRead == nil
+        and UI:ResolveChatSelection(order, store, false) == "channel:party", "a search in the way: read on the next plain look")
+    FreshSession(nil)
+    composer.composeInPlace = true
+    Check(UI:ResolveChatSelection(order, store, false) == nil and composer.openChatRead == nil, "a new message has no chat in view")
+    FreshSession(nil)
+    UI:RememberOpenChat("channel:party")
+    UI:RememberOpenChat(nil)
+    Check(db.openChat ~= nil and db.openChat[1] == "channel:party" and db.openChat[2] == nil,
+        "the chat in view is kept under the character playing")
+    local selectAt = chatSrc:find("\nfunction UI:SelectChatConversation(key)\n", 1, true)
+    local refreshAt = chatSrc:find("\nfunction UI:RefreshChatMessenger()\n", 1, true)
+    Check(selectAt ~= nil and chatSrc:find("self:RememberOpenChat(key)", selectAt, true) ~= nil
+        and refreshAt ~= nil and chatSrc:find("if not searchActive then self:RememberOpenChat(selectedKey) end", refreshAt, true) ~= nil,
+        "a pick and the list's own choice are both kept")
+    FreshSession(nil)
 end
 if mode == "old" then
     local db = _G.EasyFindChatDB

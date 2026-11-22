@@ -6641,8 +6641,46 @@ function UI:HideChatJump(row)
     if not (ChatRowHovered(row) or jump:IsMouseOver()) then jump:Hide() end
 end
 
+-- The chat in view, kept per character: a reload opens on it again.
+function UI:RememberOpenChat(key)
+    local index = self:GetChatCharacterIndex()
+    if not (key and index) then return end
+    local db = ChatDB()
+    db.openChat = type(db.openChat) == "table" and db.openChat or {}
+    db.openChat[index] = key
+end
+
+function UI:IsChatListed(key, order, store, searchActive)
+    if not key then return false end
+    local views = chatNS.Views
+    if views and views:IsView(key) then return not searchActive and views:Selectable(key) end
+    return store.byKey[key] ~= nil and self:ChatOrderContainsKey(order, key)
+end
+
+-- The chat a refresh shows: the one picked while the list still has it,
+-- else the list's first. The session's first look, once the character is
+-- known, opens on the chat in view when the last one ended.
+function UI:ResolveChatSelection(order, store, searchActive)
+    local composer = UI._chatComposer
+    if composer.composeInPlace == true then return nil end
+    if not composer.openChatRead and not searchActive then
+        local index = self:GetChatCharacterIndex()
+        if index then
+            composer.openChatRead = true
+            local kept = ChatDB().openChat
+            local last = type(kept) == "table" and kept[index] or nil
+            if self:IsChatListed(last, order, store, false) then return last end
+        end
+    end
+    local key = composer.selectedConversationKey
+    if self:IsChatListed(key, order, store, searchActive) then return key end
+    return order[1]
+end
+
 function UI:SelectChatConversation(key)
     local left = UI._chatComposer.selectedConversationKey
+    UI._chatComposer.openChatRead = true
+    self:RememberOpenChat(key)
     if chatNS.Views and key == chatNS.Views.COMBAT then chatNS.Views:NoteCameFrom(left) end
     -- Chat to chat the chrome stays as it is: only leaving a new message's
     -- view changes it.
@@ -7426,24 +7464,16 @@ function UI:RefreshChatMessenger()
     if view.filterButton then view.filterButton.count:SetCount(hiddenGroups, 0.10, 0.10, 0.12) end
     local sidebarCollapsed = self:IsChatSidebarCollapsed()
     local composeInPlace = UI._chatComposer.composeInPlace == true
-    local selectedKey = UI._chatComposer.selectedConversationKey
-    local previousSelectedKey = selectedKey
+    local previousSelectedKey = UI._chatComposer.selectedConversationKey
     local views = chatNS.Views
-    local keepView = views and not searchActive and views:IsView(selectedKey) and views:Selectable(selectedKey)
-    if composeInPlace then
-        selectedKey = nil
-    elseif not keepView then
-        if not order[1] then
-            selectedKey = nil
-        elseif (not selectedKey or not store.byKey[selectedKey] or not self:ChatOrderContainsKey(order, selectedKey)) then
-            selectedKey = order[1]
-        end
-    end
+    local selectedKey = self:ResolveChatSelection(order, store, searchActive)
     if selectedKey ~= previousSelectedKey then
         self:SaveCurrentChatReplyDraft()
         self:CloseChatMessageFilter(true)
     end
     UI._chatComposer.selectedConversationKey = selectedKey
+    -- A search's first match is no pick.
+    if not searchActive then self:RememberOpenChat(selectedKey) end
     -- In view now: read.
     local inView = selectedKey and store.byKey[selectedKey]
     if inView and (inView.unread or 0) > 0 and frame:IsVisible() and not inView.markedUnread then
