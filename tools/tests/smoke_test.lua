@@ -292,7 +292,7 @@ for line in toc:gmatch("[^\r\n]+") do
 end
 Check(boxes >= 8 and #unwatched == 0, "every edit box drops its focus on an outside click"
     .. (#unwatched > 0 and (": " .. table.concat(unwatched, ", ")) or ""))
-local chatSrc = assert(io.open(dir .. "/Chat.lua")):read("a")
+local chatSrc = assert(io.open(dir .. "/Chat.lua")):read("a"):gsub("\r\n", "\n")
 local fillAt = chatSrc:find("function UI:FillChatFolderFlyout", 1, true) or 0
 Check(chatSrc:find("foot.folderID == flyout.fid then owner = foot end", fillAt, true) ~= nil,
     "the foot row's click opens its members: the flyout finds it as its owner")
