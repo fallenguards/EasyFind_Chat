@@ -4,6 +4,13 @@ All notable changes to EasyFind Chat will be documented in this file.
 
 ---
 
+## [1.2.1] - 2026-11-22
+
+### Fixed
+- **Whisper chats stay one chat**: a whisper with someone on your realm keeps to the same chat in a session where the game gives no realm name. It could open as a second, empty one (with EasyFind 5.6.0)
+
+---
+
 ## [1.2.0] - 2026-11-22
 
 ### Added
