@@ -4,6 +4,17 @@ All notable changes to EasyFind Chat will be documented in this file.
 
 ---
 
+## [1.3.0] - 2026-11-23
+
+### Added
+- **Find a chat by name**: typing a friend's name in EasyFind's search finds your chat with them, with no @chat or chat word first
+- **Search switches on the settings page**: Conversations and Messages, what EasyFind's search finds of your chats, are on the chat's settings page as well as in the filter menu
+
+### Changed
+- Marked up to date for WoW 12.1.7, so the game no longer lists it as out of date there
+
+---
+
 ## [1.2.1] - 2026-11-22
 
 ### Fixed
