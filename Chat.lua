@@ -4534,6 +4534,9 @@ EasyFind.API.RegisterSearchProvider({
     key = "chat", category = "Chat", extension = "chat",
     label = ns.L["APP_CHAT"], icon = chatNS.ICON_TEX,
     words = { "chat", "message", "messages", "whisper", "whispers", "conversation" },
+    -- A friend's name alone finds the chat with them: loaded once a search
+    -- finds little, then searched every time after.
+    lowResults = true,
     rows = function() return chatNS:BuildSearchData() end,
     select = function(row) chatNS:OpenConversation(row.chatKey, row.chatMessageIndex) end,
     options = chatNS.SEARCH_OPTIONS,
