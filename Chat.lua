@@ -4514,27 +4514,29 @@ end
 -- The conversations and messages a search finds; a click opens the
 -- messenger there.
 -- Its conversations, and its messages only when asked: a row for every
--- message crowded other searches out.
+-- message crowded other searches out. Its filter row and its settings page
+-- hold the same switches.
+chatNS.SEARCH_OPTIONS = {
+    { label = ns.L["CHAT_OPT_CHATS"], tooltip = ns.L["CHAT_OPT_CHATS_TT"],
+      get = function() return ChatDB().findChats ~= false end,
+      set = function(on)
+          ChatDB().findChats = Utils.OffOrNil(on)
+          EasyFind.API.RefreshSearchProvider("chat")
+      end },
+    { label = ns.L["CHAT_OPT_MESSAGES"], tooltip = ns.L["CHAT_OPT_MESSAGES_TT"],
+      get = function() return ChatDB().findMessages == true end,
+      set = function(on)
+          ChatDB().findMessages = on or nil
+          EasyFind.API.RefreshSearchProvider("chat")
+      end },
+}
 EasyFind.API.RegisterSearchProvider({
     key = "chat", category = "Chat", extension = "chat",
     label = ns.L["APP_CHAT"], icon = chatNS.ICON_TEX,
     words = { "chat", "message", "messages", "whisper", "whispers", "conversation" },
     rows = function() return chatNS:BuildSearchData() end,
     select = function(row) chatNS:OpenConversation(row.chatKey, row.chatMessageIndex) end,
-    options = {
-        { label = ns.L["CHAT_OPT_CHATS"], tooltip = ns.L["CHAT_OPT_CHATS_TT"],
-          get = function() return ChatDB().findChats ~= false end,
-          set = function(on)
-              ChatDB().findChats = Utils.OffOrNil(on)
-              EasyFind.API.RefreshSearchProvider("chat")
-          end },
-        { label = ns.L["CHAT_OPT_MESSAGES"], tooltip = ns.L["CHAT_OPT_MESSAGES_TT"],
-          get = function() return ChatDB().findMessages == true end,
-          set = function(on)
-              ChatDB().findMessages = on or nil
-              EasyFind.API.RefreshSearchProvider("chat")
-          end },
-    },
+    options = chatNS.SEARCH_OPTIONS,
 })
 
 -- The chat icon's badge: messages unread across the chats the list shows,
@@ -10014,9 +10016,19 @@ local function BuildChatSettingsPage(page, kit)
         last = Choice("Messages per conversation")
         last:SetPoint("TOPLEFT", days, "BOTTOMLEFT", 0, -4)
     end
+    -- What EasyFind's search finds of it: the switches its filter row holds.
+    local searchHead = page:CreateFontString(nil, "OVERLAY", kit.Font("GameFontNormal"))
+    searchHead:SetPoint("TOPLEFT", last, "BOTTOMLEFT", 8, -14)
+    searchHead:SetText(ns.L["CHAT_OPT_SEARCH_HEADER"])
+    last = searchHead
+    for _, opt in ipairs(chatNS.SEARCH_OPTIONS) do
+        local box = kit.Checkbox(page, opt.label, opt.get, opt.set, opt.tooltip)
+        box:SetPoint("TOPLEFT", last, "BOTTOMLEFT", 0, -4)
+        last = box
+    end
     if not (chatNS.Ignore and kit.Button) then return end
     local ignoreList = kit.Button(page, _G["IGNORE_LIST"] or "Ignore List", kit.BUTTON_WIDTH)
-    ignoreList:SetPoint("TOPLEFT", last, "BOTTOMLEFT", 8, -10)
+    ignoreList:SetPoint("TOPLEFT", last, "BOTTOMLEFT", 0, -10)
     ignoreList:SetScript("OnClick", function(self) UI:ShowChatIgnoreList(self) end)
 end
 
